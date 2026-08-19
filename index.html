@@ -189,7 +189,6 @@ const TUNING_DEFAULTS = {
   screenFadeIn: 0,    // whole-screen crossfade: new screen fading in
   overlaySlide: 350,  // Face ID overlay sliding down on the bank-auth screen
   autoAdvance: 1800,  // auto-advance delay on the login / bank-auth screens
-  bankPickDelay: 380, // pause on the grid so the selected icon's tilt is seen before moving to review
   easeOut: 'ease-out',
   easeIn: 'ease-in',
 };
@@ -326,18 +325,18 @@ function bankGridButton(id) {
   // Rings (box-shadow) instead of `border` — a border consumes layout space
   // via box-sizing:border-box and would shrink the actual 32x32 logo to
   // ~30x30. An inset shadow paints the same visual edge without doing that.
+  //
+  // A tilt+drop-shadow transform on the icon was tried here to make the
+  // selected one "pop", but a rotated/shadowed element inside a container
+  // that's also being height-animated produced stray shadow artifacts
+  // bleeding into unrelated rows below (Card/PayPal) during the transition
+  // — a compositing glitch, not worth it. Back to a plain ring.
   const btnCls = sel
-    ? 'bg-[#f2f1ff]'
+    ? 'shadow-[inset_0_0_0_2px_#4d3bd8] bg-[#f2f1ff]'
     : 'shadow-[inset_0_0_0_1px_#d0d0d7] bg-white hover:shadow-[inset_0_0_0_1px_#4d3bd8] hover:bg-[#f8f8ff]';
-  // Selected: the icon itself tilts and lifts off the surface (rotated
-  // squircle + drop shadow), rather than just ringing the button around it —
-  // a more playful, deliberate "this one" pop than an outline gives.
-  const iconCls = sel
-    ? 'rotate-[-10deg] scale-110 shadow-[0_8px_16px_-2px_rgba(0,0,0,0.35)]'
-    : 'shadow-[inset_0_0_0_1px_#ececef]';
   return `
     <button onclick="selectBank('${id}')" class="w-12 h-12 rounded-lg ${btnCls} flex items-center justify-center p-2 transition-colors duration-150">
-      <div class="w-8 h-8 rounded-md overflow-hidden bg-white ${iconCls} transition-[transform,box-shadow] duration-300 ease-out">${bankIconInner(b)}</div>
+      <div class="w-8 h-8 rounded-md overflow-hidden bg-white shadow-[inset_0_0_0_1px_#ececef]">${bankIconInner(b)}</div>
     </button>`;
 }
 
@@ -855,12 +854,7 @@ function choosePayByBank() {
 // selectedBank, which replaced the grid before that render — with the new
 // selection's tilt — ever painted a frame. Re-rendering the grid here and
 // pausing briefly lets you actually see the pick land before moving on.
-function selectBank(id) {
-  state.selectedBank = id;
-  const subBody = document.getElementById('subBody');
-  if (state.step === 'bankselect' && subBody) subBody.innerHTML = subShellBody('bankselect');
-  setTimeout(() => goto('review'), TUNING.bankPickDelay);
-}
+function selectBank(id) { state.selectedBank = id; goto('review'); }
 
 // Going back from review to bank selection clears whatever was picked —
 // you're choosing fresh, not confirming the old pick.
@@ -931,7 +925,6 @@ const TUNER_FIELDS = [
   { key: 'screenFadeIn', label: 'Screen fade in', min: 0, max: 500, step: 10 },
   { key: 'overlaySlide', label: 'Face ID slide-in', min: 0, max: 1000, step: 10 },
   { key: 'autoAdvance', label: 'Auto-advance delay', min: 500, max: 4000, step: 100 },
-  { key: 'bankPickDelay', label: 'Bank pick pause', min: 0, max: 1000, step: 20 },
 ];
 const TUNER_EASE_OPTIONS = [
   ['ease', 'Ease'],
