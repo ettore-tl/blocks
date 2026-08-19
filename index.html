@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pay by Bank — Interactive Demo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  * { font-family: 'Manrope', sans-serif; }
+  .font-opensans { font-family: 'Open Sans', sans-serif; }
+  #phone {
+    position: relative;
+    scrollbar-width: none;      /* Firefox */
+    -ms-overflow-style: none;   /* old Edge/IE */
+  }
+  #phone::-webkit-scrollbar { display: none; width: 0; height: 0; } /* Chrome/Safari */
+
+  /* --- iPhone mockup shell — pure CSS, purely decorative chrome around the
+     390x844 screen; none of it affects the app's own layout/logic. --- */
+  .iphone-mockup {
+    position: relative;
+    box-sizing: border-box;
+    width: 424px;
+    height: 878px;
+    padding: 17px;
+    background: linear-gradient(160deg, #5b5c60 0%, #29292b 45%, #0a0a0b 100%);
+    border-radius: 60px;
+    box-shadow:
+      0 45px 90px -25px rgba(0, 0, 0, 0.5),
+      0 14px 30px rgba(0, 0, 0, 0.25),
+      inset 0 0 0 1.5px rgba(255, 255, 255, 0.15),
+      inset 0 0 4px 2px rgba(0, 0, 0, 0.5);
+  }
+  .iphone-island {
+    position: absolute;
+    top: 23px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90px;
+    height: 26px;
+    background: #000;
+    border-radius: 14px;
+    z-index: 50;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+  .iphone-btn {
+    position: absolute;
+    background: linear-gradient(90deg, #48484a, #1c1c1e);
+    box-shadow: -1px 0 1px rgba(0, 0, 0, 0.4);
+  }
+  .iphone-btn-mute     { left: 0px;  top: 121px; width: 3px; height: 32px; border-radius: 2px 0 0 2px; }
+  .iphone-btn-vol-up   { left: 0px;  top: 172px; width: 3px; height: 58px; border-radius: 2px 0 0 2px; }
+  .iphone-btn-vol-down { left: 0px;  top: 240px; width: 3px; height: 58px; border-radius: 2px 0 0 2px; }
+  .iphone-btn-power    { right: 0px; top: 195px; width: 3px; height: 92px; border-radius: 0 2px 2px 0;
+                          background: linear-gradient(270deg, #48484a, #1c1c1e); box-shadow: 1px 0 1px rgba(0, 0, 0, 0.4); }
+</style>
+</head>
+<body class="min-h-screen bg-[#eef0f3] flex flex-col items-center justify-center gap-5 py-10">
+
+  <div class="flex items-center gap-4">
+    <p class="text-xs font-semibold tracking-wide text-[#646477] uppercase">Pay by Bank · interactive demo</p>
+    <button onclick="resetFlow()" class="text-xs font-semibold text-[#4d3bd8] flex items-center gap-1 hover:text-[#3a2ca8] transition">
+      <i class="fa-solid fa-rotate-left"></i> Restart
+    </button>
+  </div>
+
+  <div class="iphone-mockup shrink-0">
+    <div class="iphone-island"></div>
+    <span class="iphone-btn iphone-btn-mute"></span>
+    <span class="iphone-btn iphone-btn-vol-up"></span>
+    <span class="iphone-btn iphone-btn-vol-down"></span>
+    <span class="iphone-btn iphone-btn-power"></span>
+    <div id="phone" class="w-full h-full rounded-[42px] overflow-y-auto overflow-x-hidden bg-white"></div>
+  </div>
+
+  <button id="tunerToggle" onclick="toggleTuner()" class="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-[#1f1f25] text-white shadow-xl flex items-center justify-center text-2xl hover:scale-105 transition" title="Animation tuner">
+    <i class="fa-solid fa-sliders"></i>
+  </button>
+  <div id="tunerPanel" class="hidden fixed bottom-24 right-6 z-50 w-[300px] max-h-[75vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-[#d0d0d7] p-4"></div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Data
+// ---------------------------------------------------------------------------
+// `color` is each bank's real brand primary — used to skin their dedicated
+// login and PIS-authorisation screens (background, Confirm button, Cancel
+// text) so each bank in the flow feels like its own app, not a reskinned
+// Monzo screen.
+const BANKS = {
+  barclays:   { name: 'Barclays',     color: '#00AEEF', base: 'grid-barclays-base.svg',   overlays: [{ src: 'grid-barclays-overlay.svg', inset: '19.41% 21.18% 19.26% 21.32%' }] },
+  hsbc:       { name: 'HSBC',         color: '#DB0011', base: 'grid-hsbc-base.svg',       overlays: [{ src: 'grid-hsbc-overlay.svg', inset: '33.82% 17.65%' }] },
+  lloyds:     { name: 'Lloyds',       color: '#006A4D', base: 'grid-lloyds.svg',          overlays: [] },
+  natwest:    { name: 'NatWest',      color: '#5A2887', base: 'grid-natwest-base.svg',    overlays: [{ src: 'grid-natwest-overlay.svg', inset: '23.53% 19.63% 23.68% 19.52%' }] },
+  nationwide: { name: 'Nationwide',   color: '#002D72', base: 'grid-nationwide.svg',      overlays: [] },
+  santander:  { name: 'Santander',    color: '#EC0000', base: 'grid-santander-base.svg',  overlays: [{ src: 'grid-santander-overlay.svg', inset: '18.82% 17.35%' }] },
+  monzo:      { name: 'Monzo',        color: '#112231', base: 'grid-monzo-base.svg',      overlays: [{ src: 'grid-monzo-overlay.svg', inset: '23.64% 19.41% 21.28% 19.41%' }] },
+  tsb:        { name: 'TSB',          color: '#0075C9', base: 'grid-tesco-base.svg',      overlays: [
+                  { src: 'grid-tsb-v1.svg', inset: '36.62% 12.65% 36.62% 62.35%' },
+                  { src: 'grid-tsb-v2.svg', inset: '36.76% 37.65% 36.47% 39.12%' },
+                  { src: 'grid-tsb-v3.svg', inset: '36.76% 60.74% 36.47% 14.26%' },
+                  { src: 'grid-tsb-g1.svg', inset: '43.38% 58.82% 43.09% 37.35%' },
+                  { src: 'grid-tsb-v4.svg', inset: '43.38% 35.74% 43.09% 60.44%' },
+                  { src: 'grid-tsb-g2.svg', inset: '42.94% 67.35% 42.65% 22.21%' },
+                  { src: 'grid-tsb-g3.svg', inset: '42.94% 19.56% 42.65% 69.26%' },
+                  { src: 'grid-tsb-v5.svg', inset: '42.5% 43.48% 42.65% 44.41%' } ] },
+  virgin:     { name: 'Virgin Money', color: '#E00B0B', base: 'grid-virgin-base.svg',     overlays: [
+                  { src: 'grid-virgin-v1.svg', inset: '68.02% 65.74% 20.33% 22.04%' },
+                  { src: 'grid-virgin-v2.svg', inset: '68.29% 41.91% 20.74% 48.95%' },
+                  { src: 'grid-virgin-v3.svg', inset: '68.38% 32.06% 20.88% 60.44%' },
+                  { src: 'grid-virgin-v4.svg', inset: '68.24% 21.91% 20.88% 68.82%' },
+                  { src: 'grid-virgin-v5.svg', inset: '68.09% 52.67% 20.88% 36.18%' },
+                  { src: 'grid-virgin-v6.svg', inset: '20.46% 28.7% 35.67% 28.82%' } ] },
+  tesco:      { name: 'Tesco',        color: '#00539F', base: 'grid-tesco-base.svg',      overlays: [
+                  { src: 'grid-tesco-layer1.svg', inset: '71.18% 26.69% 17.5% 23.75%' },
+                  { src: 'grid-tesco-layer2.svg', inset: '17.79% 24.12% 40.74% 25.59%' } ] },
+};
+const BANK_ORDER = ['barclays','hsbc','lloyds','natwest','nationwide','santander','monzo','tsb','virgin','tesco'];
+
+const STEP_BG = {
+  method: '#ffffff', pbb: '#ffffff', bankselect: '#ffffff', review: '#ffffff',
+  bankreview: '#f7f7f7', bankauth: '#f7f7f7', success: '#ffffff',
+};
+// 'login' isn't in the static map above — it's the selected bank's own
+// brand color, since that screen is meant to look like that bank's app.
+function stepBackground(step) {
+  return step === 'login' ? currentBank().color : STEP_BG[step];
+}
+
+const state = { step: 'method', selectedMethod: null, selectedBank: null };
+let autoTimer = null;
+let mountedGroup = null;
+
+// ---------------------------------------------------------------------------
+// Animation tuning — every duration/easing below is read live from this
+// object (not cached into constants), so the on-page tuner can adjust them
+// and have the very next transition pick up the new values immediately.
+// ---------------------------------------------------------------------------
+const TUNING_DEFAULTS = {
+  fadeOut: 70,        // pbb-box content fading out before a swap
+  resize: 0,          // invisible height resize between fade-out and fade-in
+  fadeIn: 280,        // new pbb-box content fading in once correctly sized
+  collapse: 120,      // collapsing to nothing (e.g. Pay by Bank closing)
+  screenFadeOut: 100, // whole-screen crossfade: old screen fading out
+  screenFadeIn: 0,    // whole-screen crossfade: new screen fading in
+  overlaySlide: 350,  // Face ID overlay sliding down on the bank-auth screen
+  autoAdvance: 1800,  // auto-advance delay on the login / bank-auth screens
+  easeOut: 'ease-out',
+  easeIn: 'ease-in',
+};
+const TUNING = { ...TUNING_DEFAULTS };
+
+function currentBank() { return BANKS[state.selectedBank] || BANKS.monzo; }
+function asset(name) { return `assets/${name}`; }
+function groupOf(step) {
+  if (['method', 'pbb', 'bankselect', 'review'].includes(step)) return 'A';
+  if (['bankreview', 'bankauth'].includes(step)) return 'C';
+  if (step === 'login') return 'B';
+  return 'D';
+}
+
+// ---------------------------------------------------------------------------
+// Small reusable pieces
+// ---------------------------------------------------------------------------
+function separator() { return `<div class="h-px w-full bg-[#ececef]"></div>`; }
+
+function radioCircle(selected) {
+  return selected
+    ? `<div class="w-5 h-5 rounded-full bg-[#f33b92] flex items-center justify-center shrink-0"><i class="fa-solid fa-check text-white text-[10px]"></i></div>`
+    : `<div class="w-5 h-5 rounded-full border border-[#9090a2] bg-white shrink-0"></div>`;
+}
+
+function bankIconInner(b) {
+  let html = `<div class="relative w-full h-full">
+      <img src="${asset(b.base)}" class="absolute inset-0 w-full h-full object-cover" />`;
+  (b.overlays || []).forEach(o => {
+    html += `<div class="absolute" style="inset:${o.inset}"><img src="${asset(o.src)}" class="block w-full h-full" /></div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function acceptedBanksStrip() {
+  // Single flattened source asset (fanned bank logos + "+") — matches the
+  // design exactly, rather than approximating it with separate circles.
+  return `<img src="${asset('accepted-banks-strip.svg')}" class="h-6 w-[78px] shrink-0" />`;
+}
+
+function hotelCard() {
+  return `
+    <div class="w-full border border-[#d0d0d7] rounded-xl p-4 flex flex-col gap-4">
+      <div class="flex gap-[21px] items-center w-full">
+        <div class="w-20 h-20 rounded-[9px] overflow-hidden shrink-0 bg-[#f4f4f6]">
+          <img src="${asset('hotel.png')}" class="w-full h-full object-cover object-bottom" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <p class="font-semibold text-base text-[#060606]">Royal cabin Kyoto</p>
+          <div class="flex flex-col gap-0.5 text-xs text-[#646477]">
+            <div class="flex items-center gap-1"><i class="fa-solid fa-location-dot text-[10px] text-[#060606]"></i><span>Nagyo Ward, Kyoto, Japan</span></div>
+            <div class="flex items-center gap-1"><i class="fa-solid fa-star text-[10px] text-[#f33b92]"></i><span>4,8 · 64 reviews</span></div>
+          </div>
+        </div>
+      </div>
+      ${separator()}
+      <div class="flex justify-between w-full text-sm">
+        <div><p class="font-bold text-[#060606]">Dates</p><p class="text-black">5-9 Sept 2026</p></div>
+        <div><p class="font-bold text-[#060606]">Guests</p><p class="text-black">2 adults</p></div>
+      </div>
+      ${separator()}
+      <div class="flex justify-between w-full text-sm items-center">
+        <p class="font-bold text-[#060606]">Total price</p>
+        <p class="text-base text-black">£1,500.00 GBP</p>
+      </div>
+    </div>`;
+}
+
+function pbbHeader() {
+  return `
+    <div class="flex gap-3 items-center w-full">
+      <div class="bg-[#afadff] border border-[#ececef] h-6 w-[35px] rounded shrink-0 flex items-center justify-center">
+        <img src="${asset('pbb-mark.svg')}" class="h-3.5 w-3.5" />
+      </div>
+      <p class="flex-1 font-semibold text-lg text-[#060606]">Pay by Bank</p>
+      ${acceptedBanksStrip()}
+    </div>`;
+}
+
+function pbbBlurb() {
+  return `<p class="text-sm leading-5 text-[#060606] w-full"><b>Pay in full</b> <b>now</b> or <b>spread the cost</b> for up to 24 months, securely from your bank app. <span class="text-[#4d3bd8] font-semibold cursor-default">Learn more</span></p>`;
+}
+
+function paymentIcon(type) {
+  if (type === 'amex') {
+    return `<div class="relative w-[29px] h-5 shrink-0">
+      <div class="absolute inset-0 rounded-[3px] bg-[#1f72cd] border border-[#d9d9d9]"></div>
+      <div class="absolute" style="inset:35% 9% 34% 9%"><img src="${asset('amex.svg')}" class="w-full h-full" /></div>
+    </div>`;
+  }
+  const inset = type === 'visa' ? '35% 17% 32% 13%' : '21% 17% 22% 19%';
+  return `<div class="relative w-[29px] h-5 shrink-0">
+    <div class="absolute inset-0 rounded-[6px] bg-white border border-[#d0d0d7]"></div>
+    <div class="absolute" style="inset:${inset}"><img src="${asset(type + '.svg')}" class="w-full h-full" /></div>
+  </div>`;
+}
+
+// Card/PayPal are only a real, interactive choice on the very first "method"
+// screen (matching Figma: on the pbb/bankselect/review screens their radio
+// Card/PayPal are selectable from any group-A step, not just 'method' —
+// picking one abandons whatever progress you'd made into the Pay by Bank
+// flow and resets it back to its first, unselected state (see selectMethod).
+function cardRow() {
+  const sel = state.selectedMethod === 'card';
+  return `
+    <div class="flex items-center gap-3 py-1 w-full cursor-pointer" onclick="selectMethod('card')">
+      ${radioCircle(sel)}
+      <div class="flex items-center gap-3 flex-1 min-w-0">
+        <div class="w-8 h-6 border border-black rounded flex items-center justify-center shrink-0"><i class="fa-solid fa-credit-card text-sm"></i></div>
+        <p class="flex-1 font-semibold text-lg text-[#060606]">Card</p>
+        <div class="flex gap-[3px] shrink-0">
+          ${paymentIcon('visa')}${paymentIcon('mastercard')}${paymentIcon('amex')}
+        </div>
+      </div>
+    </div>`;
+}
+
+function paypalRow() {
+  const sel = state.selectedMethod === 'paypal';
+  return `
+    <div class="flex items-center gap-3 py-1 w-full cursor-pointer" onclick="selectMethod('paypal')">
+      ${radioCircle(sel)}
+      <div class="flex items-center gap-3 flex-1 min-w-0">
+        <div class="border border-black rounded px-[7px] py-[4px] shrink-0"><img src="${asset('paypal.svg')}" class="h-4" /></div>
+        <p class="flex-1 font-semibold text-lg text-[#060606]">PayPal</p>
+      </div>
+    </div>`;
+}
+
+function bankGridButton(id) {
+  const b = BANKS[id];
+  const sel = state.selectedBank === id;
+  // Rings (box-shadow) instead of `border` — a border consumes layout space
+  // via box-sizing:border-box and would shrink the actual 32x32 logo to
+  // ~30x30. An inset shadow paints the same visual edge without doing that.
+  const cls = sel
+    ? 'shadow-[inset_0_0_0_2px_#4d3bd8] bg-[#f2f1ff]'
+    : 'shadow-[inset_0_0_0_1px_#d0d0d7] bg-white hover:shadow-[inset_0_0_0_1px_#4d3bd8] hover:bg-[#f8f8ff]';
+  return `
+    <button onclick="selectBank('${id}')" class="w-12 h-12 rounded-lg ${cls} flex items-center justify-center p-2 transition-shadow duration-150">
+      <div class="w-8 h-8 rounded-md overflow-hidden bg-white shadow-[inset_0_0_0_1px_#ececef]">${bankIconInner(b)}</div>
+    </button>`;
+}
+
+// ---------------------------------------------------------------------------
+// Group A — method / pbb / bankselect / review (shared shell: logo, hotel
+// card, the Pay-by-Bank radio/header/blurb, and the Card/PayPal rows never
+// change across these steps, so they're rendered once and never touched
+// again. Only #pbbBox (and #pbbButtonRow on the review step) differ per step
+// and are the only things that animate.)
+// ---------------------------------------------------------------------------
+function pbbBoxContent(step) {
+  if (step === 'method') return '';
+
+  if (step === 'pbb') {
+    return `
+      <div class="mt-3 flex flex-col gap-2 w-full">
+        <div class="border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-2 cursor-pointer hover:bg-[#fafafa]" onclick="goto('bankselect')">
+          <div class="flex items-center gap-2 w-full">
+            <p class="flex-1 font-bold text-base text-[#060606]">Pay in Full</p>
+            <i class="fa-solid fa-chevron-right text-[#4d3bd8] text-sm"></i>
+          </div>
+          <p class="font-medium text-base text-[#060606]">£1,500.00</p>
+        </div>
+        <div class="border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-2">
+          <div class="flex items-center gap-2 w-full">
+            <p class="flex-1 font-bold text-base text-[#060606]">Apply for Credit</p>
+            <i class="fa-solid fa-chevron-right text-[#4d3bd8] text-sm"></i>
+          </div>
+          <div class="flex flex-col gap-2 w-full text-sm">
+            <div class="flex justify-between items-center"><p class="font-medium text-base text-[#060606]">£76.35 /mo</p><div class="flex gap-1"><span class="bg-[#f4f4f6] rounded-lg px-2 py-0.5 text-xs font-semibold text-[#060606]">20% APR</span><span class="bg-[#e7e6ff] rounded-lg px-2 py-0.5 text-xs font-semibold text-[#060606]">24 Months</span></div></div>
+            <div class="flex justify-between items-center"><p class="font-medium text-base text-[#060606]">£138.95 /mo</p><div class="flex gap-1"><span class="bg-[#f4f4f6] rounded-lg px-2 py-0.5 text-xs font-semibold text-[#060606]">20% APR</span><span class="bg-[#e7e6ff] rounded-lg px-2 py-0.5 text-xs font-semibold text-[#060606]">12 Months</span></div></div>
+            <div class="flex justify-between items-center"><p class="font-medium text-base text-[#060606]">£500.00 /mo</p><div class="flex gap-1"><span class="bg-[rgba(0,143,102,0.08)] text-[#008f66] rounded-lg px-2 py-0.5 text-xs font-semibold">Free</span><span class="bg-[#e7e6ff] rounded-lg px-2 py-0.5 text-xs font-semibold text-[#060606]">3 Months</span></div></div>
+          </div>
+          <p class="text-xs text-[#646477]">Example rates use rep. APR. Your rate may vary.</p>
+        </div>
+      </div>`;
+  }
+
+  if (SUBSHELL_STEPS.has(step)) return subShellContent(step);
+}
+
+// 'bankselect' and 'review' share one visual shell — a bordered box with a
+// back-chevron, a title, the static "Pay in Full / £1,500.00" row, and a
+// separator, before the part that's actually unique to each step. Only the
+// title and that unique body differ between them, so those are the only two
+// things given their own ids to animate independently (see updateSubShell);
+// the chevron, the price row, and the separator never re-render at all.
+const SUBSHELL_STEPS = new Set(['bankselect', 'review']);
+
+function subShellTitle(step) {
+  return step === 'bankselect' ? 'Select your bank' : 'Review';
+}
+
+function subShellBackOnclick(step) {
+  return step === 'bankselect' ? "goto('pbb')" : 'backToBankSelect()';
+}
+
+function subShellBody(step) {
+  if (step === 'bankselect') {
+    return `
+      <div class="flex flex-col gap-4 w-full items-center">
+        <div class="grid grid-cols-5 gap-[13px] w-full">
+          ${BANK_ORDER.map(id => bankGridButton(id)).join('')}
+        </div>
+        <p class="mb-2 text-[#4d3bd8] text-sm font-semibold text-center cursor-default select-none">See all banks</p>
+      </div>`;
+  }
+  const b = currentBank();
+  return `
+    <div class="flex flex-col gap-4 w-full">
+      <div class="flex items-center gap-4 w-full">
+        <div class="w-12 h-12 rounded-lg shadow-[inset_0_0_0_2px_#4d3bd8] bg-[#afadff26] flex items-center justify-center p-2 shrink-0">
+          <div class="w-8 h-8 rounded-md overflow-hidden bg-white shadow-[inset_0_0_0_1px_#ececef]">${bankIconInner(b)}</div>
+        </div>
+        <p class="flex-1 font-medium text-base text-[#060606]">${b.name}</p>
+        <button class="text-[#4d3bd8] text-sm font-semibold shrink-0" onclick="backToBankSelect()">Change</button>
+      </div>
+      <p class="text-[11px] leading-[18px] text-[#40404c]">By continuing you are permitting TrueLayer to initiate a payment from your bank account. You also agree to its <span class="text-[#4d3bd8] font-semibold underline cursor-default">Terms of Service</span> and <span class="text-[#4d3bd8] font-semibold underline cursor-default">Privacy Policy</span>.</p>
+    </div>`;
+}
+
+function subShellContent(step) {
+  return `
+    <div class="mt-3 border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-4 w-full">
+      <div class="flex items-center gap-2">
+        <button id="subBack" onclick="${subShellBackOnclick(step)}" class="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[#f4f4f6] shrink-0"><i class="fa-solid fa-chevron-left text-[#060606]"></i></button>
+        <p id="subTitle" class="font-bold text-base text-[#060606]">${subShellTitle(step)}</p>
+      </div>
+      <div class="flex justify-between font-medium text-base text-[#060606]"><p>Pay in Full</p><p>£1,500.00</p></div>
+      ${separator()}
+      <div id="subBody" class="w-full">${subShellBody(step)}</div>
+    </div>`;
+}
+
+function pbbButtonContent(step) {
+  if (step !== 'review') return '';
+  const b = currentBank();
+  return `
+    <button onclick="goto('login')" class="mt-4 w-full h-12 rounded-xl bg-[#afadff] flex items-center justify-center gap-2 font-bold text-base text-[#060606] hover:brightness-95 transition">
+      <img src="${asset('pbb-mark.svg')}" class="h-5" /> Pay with ${b.name}
+    </button>`;
+}
+
+function buildGroupA(step) {
+  return `<div class="absolute top-0 left-0 w-full min-h-full bg-white flex flex-col items-center gap-6 px-4 py-10">
+      <div class="h-6 shrink-0"><img src="${asset('logo-travelnow.svg')}" class="h-6" /></div>
+      ${hotelCard()}
+      <div class="flex flex-col gap-4 w-full">
+        <p class="font-semibold text-xl text-[#060606] w-full">Choose how to pay</p>
+        <div class="flex flex-col gap-4 w-full">
+          <div id="pbbHeaderRow" class="flex gap-3 py-1 w-full ${step === 'method' ? 'cursor-pointer' : ''}" onclick="handlePbbHeaderClick()">
+            <div id="pbbRadio" class="shrink-0">${radioCircle(pbbCheckedFor())}</div>
+            <div class="flex-1 flex flex-col min-w-0">
+              ${pbbHeader()}
+              <div class="mt-3">${pbbBlurb()}</div>
+              <div id="pbbBox" class="w-full">${pbbBoxContent(step)}</div>
+              <div id="pbbButtonRow" class="w-full">${pbbButtonContent(step)}</div>
+            </div>
+          </div>
+          ${separator()}
+          <div id="cardRowSlot">${cardRow()}</div>
+          ${separator()}
+          <div id="paypalRowSlot">${paypalRow()}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// Overlapping calls on the same element (e.g. a quick second click before a
+// prior swap finished) used to leave stale timers/listeners racing each
+// other, which could strand an element mid-height. Every animation below is
+// an async function that bumps this per-element generation counter on entry
+// and checks it after every await — if a newer call started in the
+// meantime, the stale one just stops touching the DOM instead of fighting
+// the new one for the final state.
+const animGeneration = new WeakMap();
+function bumpGeneration(el) {
+  const g = (animGeneration.get(el) || 0) + 1;
+  animGeneration.set(el, g);
+  return g;
+}
+function isCurrentGeneration(el, g) {
+  return animGeneration.get(el) === g;
+}
+
+function nextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(resolve));
+}
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+// Resolves on `transitionend` for the given property, or after `timeoutMs`
+// regardless — a safety net for whenever the browser doesn't fire the event
+// (e.g. the start/end values happened to already match).
+function waitForTransition(el, property, timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      el.removeEventListener('transitionend', onEnd);
+      resolve();
+    };
+    const onEnd = (e) => { if (e.propertyName === property) finish(); };
+    el.addEventListener('transitionend', onEnd);
+    setTimeout(finish, timeoutMs);
+  });
+}
+
+function lockHeight(el) {
+  el.style.height = el.getBoundingClientRect().height + 'px';
+  el.style.overflow = 'hidden';
+}
+
+// Setting `transition` and changing the value it targets in the same
+// synchronous block can get coalesced by the browser into a single instant
+// jump instead of an animation — reading a layout property in between forces
+// the style to actually commit first, so the following change is guaranteed
+// to animate. This is what made the height resize below jump instead of
+// easing smoothly.
+function forceReflow(el) {
+  void el.offsetHeight;
+}
+
+// Closing down to nothing (e.g. Pay by Bank collapsing back to its
+// unselected state) doesn't need the fade-out/resize/fade-in sequence built
+// for swapping one piece of content for another — there's no new content to
+// reveal, so opacity and height can just shrink together in one fast,
+// single motion instead of leaving an empty box hanging around mid-shrink.
+async function collapseElement(el, duration) {
+  const g = bumpGeneration(el);
+  const startHeight = el.getBoundingClientRect().height;
+  el.style.overflow = 'hidden';
+  el.style.height = startHeight + 'px';
+  await nextFrame();
+  if (!isCurrentGeneration(el, g)) return;
+  el.style.transition = `opacity ${duration}ms ${TUNING.easeIn}, height ${duration}ms ${TUNING.easeIn}`;
+  forceReflow(el);
+  el.style.opacity = '0';
+  el.style.height = '0px';
+  await waitForTransition(el, 'height', duration + 40);
+  if (!isCurrentGeneration(el, g)) return;
+  el.innerHTML = '';
+  el.style.height = 'auto';
+  el.style.overflow = '';
+  el.style.opacity = '1'; // reset so it's visible next time content fills it
+}
+
+// Fades `el`'s current content out, resizes it to fit `newHTML` WHILE STILL
+// INVISIBLE, and only then fades the new content in. Resizing and fading in
+// at the same time (the previous approach) meant shrinking to shorter
+// content showed a blank gap below it until the height caught up, and
+// growing to taller content could briefly clip it — sequencing so the box
+// is already the right size before anything becomes visible avoids both.
+async function crossfadeContent(el, newHTML) {
+  if (!newHTML || !newHTML.trim()) { collapseElement(el, TUNING.collapse); return; }
+  const g = bumpGeneration(el);
+
+  lockHeight(el);
+  el.style.transition = `opacity ${TUNING.fadeOut}ms ${TUNING.easeIn}`;
+  forceReflow(el);
+  el.style.opacity = '0';
+  await waitForTransition(el, 'opacity', TUNING.fadeOut + 40);
+  if (!isCurrentGeneration(el, g)) return;
+
+  el.innerHTML = newHTML;
+  // Wait a frame before measuring: right after an innerHTML swap, Tailwind's
+  // CDN build injects CSS for any newly-used utility classes asynchronously
+  // (via a MutationObserver), so scrollHeight read on the same tick can be
+  // measured against not-yet-applied styles and land on the wrong target.
+  await nextFrame();
+  if (!isCurrentGeneration(el, g)) return;
+  const endHeight = el.scrollHeight;
+  await nextFrame();
+  if (!isCurrentGeneration(el, g)) return;
+  el.style.transition = `height ${TUNING.resize}ms ${TUNING.easeOut}`;
+  forceReflow(el);
+  el.style.height = endHeight + 'px';
+  await waitForTransition(el, 'height', TUNING.resize + 40);
+  if (!isCurrentGeneration(el, g)) return;
+  el.style.height = 'auto';
+  el.style.overflow = '';
+
+  // The box is now exactly the right size — safe to reveal the content.
+  el.style.transition = `opacity ${TUNING.fadeIn}ms ${TUNING.easeOut}`;
+  forceReflow(el);
+  el.style.opacity = '1';
+}
+
+// bankselect <-> review share one shell (see subShellContent) — only the
+// title and the body beneath it actually differ, so only those two animate.
+// The back-chevron's target still needs updating, but instantly: it's the
+// same glyph either way, there's nothing to visually transition.
+function updateSubShell(step) {
+  const backBtn = document.getElementById('subBack');
+  const title = document.getElementById('subTitle');
+  const body = document.getElementById('subBody');
+  if (backBtn) backBtn.setAttribute('onclick', subShellBackOnclick(step));
+  if (title) crossfadeContent(title, subShellTitle(step));
+  if (body) crossfadeContent(body, subShellBody(step));
+}
+
+function updatePbbVariable(prevStep) {
+  const box = document.getElementById('pbbBox');
+  const btnRow = document.getElementById('pbbButtonRow');
+  if (!box) return;
+
+  if (SUBSHELL_STEPS.has(prevStep) && SUBSHELL_STEPS.has(state.step)) {
+    updateSubShell(state.step);
+  } else {
+    // No shared structure between these two steps — fall back to fading the
+    // whole box out and back in (or, if closing to nothing, the fast
+    // combined collapse above).
+    crossfadeContent(box, pbbBoxContent(state.step));
+  }
+
+  if (btnRow) crossfadeContent(btnRow, pbbButtonContent(state.step));
+}
+
+// ---------------------------------------------------------------------------
+// Group B — bank login (Face ID splash)
+// ---------------------------------------------------------------------------
+function buildGroupB() {
+  const b = currentBank();
+  return `
+    <div class="absolute top-0 left-0 w-full min-h-full flex flex-col items-center justify-center cursor-pointer" style="background:${b.color}" onclick="goto('bankreview')">
+      <div class="absolute top-[59px] left-1/2 -translate-x-1/2">
+        <div class="w-[150px] h-[150px] bg-black rounded-[42px] shadow-2xl flex items-center justify-center">
+          <div class="w-[95px] h-[96px] rounded-[17px] overflow-hidden relative">
+            <img src="${asset('faceid.png')}" class="absolute w-[146%] max-w-none h-[127%] left-[-22.5%] top-[-12%]" />
+          </div>
+        </div>
+      </div>
+      <div class="flex flex-col items-center gap-4">
+        <div class="w-20 h-20 rounded-full overflow-hidden bg-white shadow-lg shrink-0">${bankIconInner(b)}</div>
+        <p class="text-white font-extrabold text-3xl tracking-tight">${b.name}</p>
+      </div>
+      <p class="absolute bottom-10 text-white/50 text-xs">Tap to continue</p>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Group C — bankreview / bankauth (shared "bank app" shell; Face ID overlay animates in on top)
+// ---------------------------------------------------------------------------
+function faceOverlayHTML() {
+  return `
+    <div class="absolute top-0 left-0 w-full flex items-center justify-center pt-[10px] pb-[35px]">
+      <div class="w-[150px] h-[150px] bg-black rounded-[42px] shadow-2xl flex items-center justify-center">
+        <div class="w-[95px] h-[96px] rounded-[17px] overflow-hidden relative">
+          <img src="${asset('faceid.png')}" class="absolute w-[146%] max-w-none h-[127%] left-[-22.5%] top-[-12%]" />
+        </div>
+      </div>
+    </div>`;
+}
+
+function bankMerchantBody() {
+  // No drawn status bar here — the iPhone mockup's own Dynamic Island covers
+  // that, so this just needs enough top clearance to sit below it.
+  const b = currentBank();
+  return `
+    <div class="flex flex-col items-center gap-3 pt-12">
+      <div class="w-14 h-14 rounded-full overflow-hidden bg-white shadow-sm shrink-0">${bankIconInner(b)}</div>
+      <p class="font-opensans font-bold text-lg text-black">${b.name}</p>
+    </div>
+    <p class="font-opensans text-center font-semibold text-xl mt-3 px-6 text-black">Make a payment</p>
+    <p class="font-opensans text-center text-sm text-black/60 mt-2 px-4 leading-5">This merchant would like to make a payment from your account. Check the details, then confirm or cancel.</p>
+    <div class="font-opensans bg-white border-y border-black/10 mt-6 py-5 px-4 flex flex-col text-black">
+      <div class="flex justify-between items-center py-[9px]"><p>Amount</p><p class="font-bold text-lg">£1,500.00</p></div>
+      <div class="h-px bg-black/10"></div>
+      <div class="flex justify-between items-center py-[9px]"><p>Recipient</p><p>Travel Now</p></div>
+      <div class="h-px bg-black/10"></div>
+      <div class="flex justify-between items-center py-[9px]"><p>Sort code</p><p>00-04-00</p></div>
+      <div class="h-px bg-black/10"></div>
+      <div class="flex justify-between items-center py-[9px]"><p>Account number</p><p>123455678</p></div>
+      <div class="h-px bg-black/10"></div>
+      <div class="flex justify-between items-center py-[9px]"><p>Reference</p><p>123456</p></div>
+    </div>
+    <div class="font-opensans flex flex-col items-center gap-3 mt-10 pb-8">
+      <button onclick="event.stopPropagation(); goto('bankauth')" class="w-[336px] text-white font-bold text-lg rounded-lg py-4" style="background:${b.color}">Confirm</button>
+      <button class="w-[336px] font-bold text-lg py-2 cursor-default" style="color:${b.color}">Cancel</button>
+    </div>`;
+}
+
+function buildGroupC(step) {
+  const overlay = step === 'bankauth' ? faceOverlayHTML() : '';
+  const hint = step === 'bankauth' ? `<p id="tapHint" class="absolute bottom-2 w-full text-center text-black/30 text-xs">Tap to continue</p>` : '';
+  const clickAttr = step === 'bankauth' ? ` onclick="goto('success')"` : '';
+  return `<div id="groupC" class="absolute top-0 left-0 w-full min-h-full bg-[#f7f7f7]"${clickAttr}>
+      ${bankMerchantBody()}
+      <div id="faceOverlaySlot">${overlay}</div>
+      ${hint}
+    </div>`;
+}
+
+function updateOverlayC() {
+  const groupEl = document.getElementById('groupC');
+  const slot = document.getElementById('faceOverlaySlot');
+  if (!groupEl || !slot || state.step !== 'bankauth') return;
+
+  groupEl.setAttribute('onclick', "goto('success')");
+  slot.innerHTML = faceOverlayHTML();
+  const overlayEl = slot.firstElementChild;
+  overlayEl.style.opacity = '0';
+  overlayEl.style.transform = 'translateY(-16px)';
+  requestAnimationFrame(() => {
+    overlayEl.style.transition = `transform ${TUNING.overlaySlide}ms cubic-bezier(.22,1,.36,1), opacity ${TUNING.overlaySlide}ms ease`;
+    overlayEl.style.opacity = '1';
+    overlayEl.style.transform = 'translateY(0)';
+  });
+
+  if (!document.getElementById('tapHint')) {
+    const hint = document.createElement('p');
+    hint.id = 'tapHint';
+    hint.className = 'absolute bottom-2 w-full text-center text-black/30 text-xs';
+    hint.textContent = 'Tap to continue';
+    hint.style.opacity = '0';
+    groupEl.appendChild(hint);
+    requestAnimationFrame(() => {
+      hint.style.transition = 'opacity .3s ease .2s';
+      hint.style.opacity = '1';
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Group D — success
+// ---------------------------------------------------------------------------
+function buildGroupD() {
+  return `
+    <div class="absolute top-0 left-0 w-full min-h-full bg-white flex flex-col items-center gap-6 px-4 py-10">
+      <div class="h-6 shrink-0"><img src="${asset('logo-travelnow.svg')}" class="h-6" /></div>
+      <div class="flex-1 w-full flex flex-col items-center justify-center gap-6 px-2 text-center">
+        <i class="fa-solid fa-circle-check text-[#f33b92] text-[80px]"></i>
+        <div class="flex flex-col items-center gap-4">
+          <div>
+            <p class="font-semibold text-2xl text-[#1f1f25]">Payment successful</p>
+            <p class="text-base text-[#1f1f25]">Your booking is complete.</p>
+          </div>
+          <p class="text-base text-[#646477]">(ref. 123456)</p>
+        </div>
+        <button onclick="resetFlow()" class="w-full h-12 rounded-xl bg-[#f33b92] text-white font-bold text-base hover:brightness-95 transition">Done</button>
+      </div>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Navigation / transition engine
+// ---------------------------------------------------------------------------
+function buildScreenHTML(step) {
+  const g = groupOf(step);
+  if (g === 'A') return buildGroupA(step);
+  if (g === 'B') return buildGroupB();
+  if (g === 'C') return buildGroupC(step);
+  return buildGroupD();
+}
+
+function renderTransition(prevStep) {
+  const phone = document.getElementById('phone');
+  const newGroup = groupOf(state.step);
+
+  if (newGroup === mountedGroup && newGroup === 'A') { updatePbbVariable(prevStep); return; }
+  if (newGroup === mountedGroup && newGroup === 'C') { updateOverlayC(); return; }
+
+  // Crossing groups (or first load): these layouts share nothing, so fade
+  // the old screen out COMPLETELY before mounting the new one — sequential,
+  // not overlapping. Fading them simultaneously (as before) briefly showed
+  // both blended together — e.g. a light card layout ghosted under a dark
+  // full-bleed Face ID screen — which read as the whole section flashing/
+  // shifting rather than a clean transition.
+  const old = phone.firstElementChild;
+  mountedGroup = newGroup;
+
+  const mountNext = () => {
+    phone.style.background = stepBackground(state.step);
+    const temp = document.createElement('div');
+    temp.innerHTML = buildScreenHTML(state.step);
+    const next = temp.firstElementChild;
+    next.style.opacity = '0';
+    phone.appendChild(next);
+    phone.scrollTop = 0;
+    requestAnimationFrame(() => {
+      next.style.transition = `opacity ${TUNING.screenFadeIn}ms ${TUNING.easeOut}`;
+      next.style.opacity = '1';
+    });
+  };
+
+  if (old) {
+    old.style.transition = `opacity ${TUNING.screenFadeOut}ms ${TUNING.easeIn}`;
+    old.style.opacity = '0';
+    setTimeout(() => { old.remove(); mountNext(); }, TUNING.screenFadeOut);
+  } else {
+    mountNext();
+  }
+}
+
+function goto(step) {
+  if (step === state.step) return; // already there — nothing to transition
+  if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+  const prevStep = state.step;
+  state.step = step;
+  renderTransition(prevStep);
+  if (step === 'login') autoTimer = setTimeout(() => goto('bankreview'), TUNING.autoAdvance);
+  if (step === 'bankauth') autoTimer = setTimeout(() => goto('success'), TUNING.autoAdvance);
+}
+
+// Radio state (Pay by Bank / Card / PayPal) is shared, static markup across
+// all of group A's steps — updating it is an instant swap, never an
+// animated transition, since it never actually needs to "transition" in
+// from a different layout.
+function pbbCheckedFor() {
+  return state.selectedMethod === 'pbb';
+}
+
+function syncMethodRadios() {
+  const radio = document.getElementById('pbbRadio');
+  const cardSlot = document.getElementById('cardRowSlot');
+  const paypalSlot = document.getElementById('paypalRowSlot');
+  const headerRow = document.getElementById('pbbHeaderRow');
+  if (radio) radio.innerHTML = radioCircle(pbbCheckedFor());
+  if (cardSlot) cardSlot.innerHTML = cardRow();
+  if (paypalSlot) paypalSlot.innerHTML = paypalRow();
+  // Only the very first screen treats tapping the header as "proceed".
+  if (headerRow) headerRow.classList.toggle('cursor-pointer', state.step === 'method');
+}
+
+// Picking Card or PayPal — from any step — abandons whatever progress was
+// made into the Pay by Bank flow and resets it back to its first,
+// unselected state (no bank picked, back on the method screen).
+function selectMethod(method) {
+  state.selectedMethod = method;
+  state.selectedBank = null;
+  if (state.step !== 'method') goto('method');
+  syncMethodRadios();
+}
+
+// The header row (radio + icon + title + blurb) is static, persistent
+// markup shared by every group-A step — only the very first screen treats
+// tapping it as "proceed". On later steps it just sits there; clicks on the
+// buttons *inside* #pbbBox (Pay in Full, chevron-left, bank grid, Change...)
+// still bubble up to this handler, so it must no-op instead of re-navigating.
+function handlePbbHeaderClick() {
+  if (state.step !== 'method') return;
+  choosePayByBank();
+}
+
+function choosePayByBank() {
+  state.selectedMethod = 'pbb';
+  goto('pbb'); // sets state.step = 'pbb' first...
+  syncMethodRadios(); // ...so this now correctly locks the radio checked
+}
+function selectBank(id) { state.selectedBank = id; goto('review'); }
+
+// Going back from review to bank selection clears whatever was picked —
+// you're choosing fresh, not confirming the old pick.
+function backToBankSelect() {
+  state.selectedBank = null;
+  goto('bankselect');
+}
+
+function resetFlow() {
+  if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+  state.step = 'method';
+  state.selectedMethod = null;
+  state.selectedBank = null;
+  mountedGroup = null; // force a full, fresh remount
+  renderTransition();
+}
+
+// ---------------------------------------------------------------------------
+// Animation tuner — a small on-page panel for live-adjusting every duration/
+// easing in TUNING. Every animation function above reads TUNING fresh each
+// time it runs, so a slider change takes effect on the very next transition
+// — no reload needed.
+// ---------------------------------------------------------------------------
+const TUNER_FIELDS = [
+  { key: 'fadeOut', label: 'Fade out', min: 0, max: 400, step: 10 },
+  { key: 'resize', label: 'Resize (invisible)', min: 0, max: 500, step: 10 },
+  { key: 'fadeIn', label: 'Fade in', min: 0, max: 400, step: 10 },
+  { key: 'collapse', label: 'Collapse to empty', min: 0, max: 500, step: 10 },
+  { key: 'screenFadeOut', label: 'Screen fade out', min: 0, max: 500, step: 10 },
+  { key: 'screenFadeIn', label: 'Screen fade in', min: 0, max: 500, step: 10 },
+  { key: 'overlaySlide', label: 'Face ID slide-in', min: 0, max: 1000, step: 10 },
+  { key: 'autoAdvance', label: 'Auto-advance delay', min: 500, max: 4000, step: 100 },
+];
+const TUNER_EASE_OPTIONS = [
+  ['ease', 'Ease'],
+  ['ease-in', 'Ease in'],
+  ['ease-out', 'Ease out'],
+  ['ease-in-out', 'Ease in-out'],
+  ['linear', 'Linear'],
+  ['cubic-bezier(.22,1,.36,1)', 'Snappy (expo out)'],
+  ['cubic-bezier(.4,0,.2,1)', 'Material standard'],
+];
+
+function buildTunerPanel() {
+  const sliderRow = (f) => `
+    <label class="flex flex-col gap-1 text-xs text-[#1f1f25]">
+      <span class="flex justify-between items-center">
+        <span>${f.label}</span>
+        <span id="tuner-val-${f.key}" class="font-mono text-[11px] text-[#4d3bd8]">${TUNING[f.key]}ms</span>
+      </span>
+      <input type="range" min="${f.min}" max="${f.max}" step="${f.step}" value="${TUNING[f.key]}"
+        oninput="setTuningNumber('${f.key}', this.value)" class="w-full accent-[#4d3bd8]" />
+    </label>`;
+
+  const easeSelect = (key, label) => `
+    <label class="flex flex-col gap-1 text-xs text-[#1f1f25]">
+      <span>${label}</span>
+      <select onchange="setTuningValue('${key}', this.value)" class="w-full text-xs border border-[#d0d0d7] rounded-md px-2 py-1.5 bg-white">
+        ${TUNER_EASE_OPTIONS.map(([v, l]) => `<option value="${v}" ${TUNING[key] === v ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
+    </label>`;
+
+  return `
+    <div class="flex items-center justify-between mb-3">
+      <p class="text-sm font-semibold text-[#1f1f25]">Animation tuner</p>
+      <button onclick="toggleTuner()" class="w-6 h-6 flex items-center justify-center rounded-md hover:bg-[#f4f4f6] text-[#646477]"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="flex flex-col gap-3">${TUNER_FIELDS.map(sliderRow).join('')}</div>
+    <div class="grid grid-cols-2 gap-2 mt-3">${easeSelect('easeOut', 'Ease (entrances)')}${easeSelect('easeIn', 'Ease (exits)')}</div>
+    <button onclick="previewTuning()" class="w-full mt-3 text-xs font-semibold text-white bg-[#4d3bd8] rounded-lg py-2 hover:brightness-95 transition">▶ Preview transitions</button>
+    <div class="flex gap-2 mt-2">
+      <button onclick="resetTuning()" class="flex-1 text-xs font-semibold border border-[#d0d0d7] rounded-lg py-2 hover:bg-[#f4f4f6] transition">Reset</button>
+      <button id="tunerCopyBtn" onclick="copyTuningCode(this)" class="flex-1 text-xs font-semibold border border-[#d0d0d7] rounded-lg py-2 hover:bg-[#f4f4f6] transition">Copy code</button>
+    </div>`;
+}
+
+function refreshTunerPanel() {
+  const panel = document.getElementById('tunerPanel');
+  if (panel && !panel.classList.contains('hidden')) panel.innerHTML = buildTunerPanel();
+}
+
+function setTuningNumber(key, rawValue) {
+  TUNING[key] = Number(rawValue);
+  const readout = document.getElementById(`tuner-val-${key}`);
+  if (readout) readout.textContent = `${TUNING[key]}ms`;
+}
+
+function setTuningValue(key, value) {
+  TUNING[key] = value;
+}
+
+function toggleTuner() {
+  const panel = document.getElementById('tunerPanel');
+  const isHidden = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !isHidden);
+  if (isHidden) panel.innerHTML = buildTunerPanel();
+}
+
+function resetTuning() {
+  Object.assign(TUNING, TUNING_DEFAULTS);
+  refreshTunerPanel();
+}
+
+function copyTuningCode(btn) {
+  const body = Object.keys(TUNING_DEFAULTS)
+    .map((k) => `  ${k}: ${typeof TUNING[k] === 'string' ? `'${TUNING[k]}'` : TUNING[k]},`)
+    .join('\n');
+  const code = `const TUNING = {\n${body}\n};`;
+  const showCopied = () => {
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = original; }, 1200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(showCopied).catch(() => alert(code));
+  } else {
+    alert(code);
+  }
+}
+
+// Runs the pbb-box grow, sub-shell swap, sub-shell shrink, and full-collapse
+// transitions back to back so a tuned value can be seen immediately without
+// manually clicking through the whole flow.
+async function previewTuning() {
+  if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+  const pbbSettle = () => TUNING.fadeOut + TUNING.resize + TUNING.fadeIn + 150;
+  const screenSettle = () => TUNING.screenFadeOut + TUNING.screenFadeIn + 150;
+
+  resetFlow();
+  await wait(screenSettle());
+  choosePayByBank();
+  await wait(pbbSettle());
+  goto('bankselect');
+  await wait(pbbSettle());
+  selectBank('monzo');
+  await wait(pbbSettle());
+  backToBankSelect();
+  await wait(pbbSettle());
+  selectMethod('card');
+}
+
+(function initFromQuery() {
+  const q = new URLSearchParams(location.search).get('step');
+  const validSteps = ['method', 'pbb', 'bankselect', 'review', 'login', 'bankreview', 'bankauth', 'success'];
+  if (q && validSteps.includes(q)) state.step = q;
+})();
+renderTransition();
+
+// Press "R" to restart the demo — plain keypress only, so Cmd/Ctrl+R still
+// reloads the page as usual instead of being hijacked.
+window.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() !== 'r') return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  resetFlow();
+});
+</script>
+</body>
+</html>
