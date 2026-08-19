@@ -76,12 +76,15 @@
     <span class="iphone-btn iphone-btn-power"></span>
     <div id="phone" class="relative w-full h-full rounded-[42px] overflow-y-auto overflow-x-hidden bg-white">
       <!-- Learn more bottom sheet — lives inside #phone itself (not just
-           visually overlapping it), clipped by #phone's own rounded corners
-           and scroll container. #phone's transition code finds "the current
-           screen" via .screen-content specifically, so this sits alongside
-           it untouched by screen swaps. z-40 keeps it above the screen
-           regardless of DOM order. -->
-      <div id="learnMoreModal" class="absolute inset-0 pointer-events-none z-40">
+           visually overlapping it). #phone's transition code finds "the
+           current screen" via .screen-content specifically, so this sits
+           alongside it untouched by screen swaps. z-40 keeps it above the
+           screen regardless of DOM order. Needs its OWN overflow-hidden:
+           the closed sheet sits off-screen via `translate-y-full`, and a
+           transformed position still counts toward an ancestor's scrollable
+           area — without clipping it here, scrolling #phone far enough
+           would reveal the "closed" sheet even though it was never opened. -->
+      <div id="learnMoreModal" class="absolute inset-0 overflow-hidden pointer-events-none z-40">
         <div id="learnMoreBackdrop" onclick="closeLearnMoreModal()" class="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-200"></div>
         <div id="learnMoreSheet" class="absolute bottom-0 left-0 right-0 bg-white rounded-t-[28px] px-6 pt-3 pb-8 translate-y-full transition-transform duration-300 ease-out" style="box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
           <div class="w-9 h-1 rounded-full bg-[#d0d0d7] mx-auto mb-5"></div>
@@ -186,6 +189,7 @@ const TUNING_DEFAULTS = {
   screenFadeIn: 0,    // whole-screen crossfade: new screen fading in
   overlaySlide: 350,  // Face ID overlay sliding down on the bank-auth screen
   autoAdvance: 1800,  // auto-advance delay on the login / bank-auth screens
+  bankPickDelay: 380, // pause on the grid so the selected icon's tilt is seen before moving to review
   easeOut: 'ease-out',
   easeIn: 'ease-in',
 };
@@ -847,7 +851,16 @@ function choosePayByBank() {
   goto('pbb'); // sets state.step = 'pbb' first...
   syncMethodRadios(); // ...so this now correctly locks the radio checked
 }
-function selectBank(id) { state.selectedBank = id; goto('review'); }
+// Tapping a bank used to navigate to review in the same tick as setting
+// selectedBank, which replaced the grid before that render — with the new
+// selection's tilt — ever painted a frame. Re-rendering the grid here and
+// pausing briefly lets you actually see the pick land before moving on.
+function selectBank(id) {
+  state.selectedBank = id;
+  const subBody = document.getElementById('subBody');
+  if (state.step === 'bankselect' && subBody) subBody.innerHTML = subShellBody('bankselect');
+  setTimeout(() => goto('review'), TUNING.bankPickDelay);
+}
 
 // Going back from review to bank selection clears whatever was picked —
 // you're choosing fresh, not confirming the old pick.
@@ -918,6 +931,7 @@ const TUNER_FIELDS = [
   { key: 'screenFadeIn', label: 'Screen fade in', min: 0, max: 500, step: 10 },
   { key: 'overlaySlide', label: 'Face ID slide-in', min: 0, max: 1000, step: 10 },
   { key: 'autoAdvance', label: 'Auto-advance delay', min: 500, max: 4000, step: 100 },
+  { key: 'bankPickDelay', label: 'Bank pick pause', min: 0, max: 1000, step: 20 },
 ];
 const TUNER_EASE_OPTIONS = [
   ['ease', 'Ease'],
