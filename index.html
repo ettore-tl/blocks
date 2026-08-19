@@ -77,7 +77,7 @@
     <div id="phone" class="w-full h-full rounded-[42px] overflow-y-auto overflow-x-hidden bg-white"></div>
   </div>
 
-  <button id="tunerToggle" onclick="toggleTuner()" class="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-[#1f1f25] text-white shadow-xl flex items-center justify-center text-2xl hover:scale-105 transition" title="Animation tuner">
+  <button id="tunerToggle" onclick="toggleTuner()" class="hidden fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-[#1f1f25] text-white shadow-xl flex items-center justify-center text-2xl hover:scale-105 transition" title="Animation tuner">
     <i class="fa-solid fa-sliders"></i>
   </button>
   <div id="tunerPanel" class="hidden fixed bottom-24 right-6 z-50 w-[300px] max-h-[75vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-[#d0d0d7] p-4"></div>
@@ -943,9 +943,14 @@ async function previewTuning() {
 }
 
 (function initFromQuery() {
-  const q = new URLSearchParams(location.search).get('step');
+  const params = new URLSearchParams(location.search);
+  const q = params.get('step');
   const validSteps = ['method', 'pbb', 'bankselect', 'review', 'login', 'bankreview', 'bankauth', 'success'];
   if (q && validSteps.includes(q)) state.step = q;
+
+  // The animation tuner is a dev/demo-building tool, not part of the demo
+  // itself — only surface its toggle when explicitly requested via ?tuner.
+  if (params.has('tuner')) document.getElementById('tunerToggle').classList.remove('hidden');
 })();
 renderTransition();
 
