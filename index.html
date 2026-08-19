@@ -74,40 +74,43 @@
     <span class="iphone-btn iphone-btn-vol-up"></span>
     <span class="iphone-btn iphone-btn-vol-down"></span>
     <span class="iphone-btn iphone-btn-power"></span>
-    <div id="phone" class="w-full h-full rounded-[42px] overflow-y-auto overflow-x-hidden bg-white"></div>
-
-    <!-- Learn more bottom sheet — a sibling of #phone (not a child), clipped
-         to the same rounded frame, so it overlays the screen regardless of
-         #phone's own scroll position instead of scrolling away with it. -->
-    <div id="learnMoreModal" class="absolute inset-0 rounded-[42px] overflow-hidden pointer-events-none z-40">
-      <div id="learnMoreBackdrop" onclick="closeLearnMoreModal()" class="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-200"></div>
-      <div id="learnMoreSheet" class="absolute bottom-0 left-0 right-0 bg-white rounded-t-[28px] px-6 pt-3 pb-8 translate-y-full transition-transform duration-300 ease-out" style="box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
-        <div class="w-9 h-1 rounded-full bg-[#d0d0d7] mx-auto mb-5"></div>
-        <div class="flex items-center gap-3 mb-4">
-          <div class="w-11 h-11 rounded-full bg-[#afadff33] flex items-center justify-center shrink-0">
-            <img src="assets/pbb-mark.svg" class="h-5 w-5" />
+    <div id="phone" class="relative w-full h-full rounded-[42px] overflow-y-auto overflow-x-hidden bg-white">
+      <!-- Learn more bottom sheet — lives inside #phone itself (not just
+           visually overlapping it), clipped by #phone's own rounded corners
+           and scroll container. #phone's transition code finds "the current
+           screen" via .screen-content specifically, so this sits alongside
+           it untouched by screen swaps. z-40 keeps it above the screen
+           regardless of DOM order. -->
+      <div id="learnMoreModal" class="absolute inset-0 pointer-events-none z-40">
+        <div id="learnMoreBackdrop" onclick="closeLearnMoreModal()" class="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-200"></div>
+        <div id="learnMoreSheet" class="absolute bottom-0 left-0 right-0 bg-white rounded-t-[28px] px-6 pt-3 pb-8 translate-y-full transition-transform duration-300 ease-out" style="box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+          <div class="w-9 h-1 rounded-full bg-[#d0d0d7] mx-auto mb-5"></div>
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-11 h-11 rounded-full bg-[#afadff33] flex items-center justify-center shrink-0">
+              <img src="assets/pbb-mark.svg" class="h-5 w-5" />
+            </div>
+            <p class="font-semibold text-lg text-[#060606]">How Pay by Bank works</p>
           </div>
-          <p class="font-semibold text-lg text-[#060606]">How Pay by Bank works</p>
+          <div class="flex flex-col gap-3 text-sm leading-5 text-[#1f1f25]">
+            <div class="flex gap-3">
+              <span class="font-bold text-[#4d3bd8] w-4 shrink-0">1</span>
+              <p>You're securely redirected to your own bank's app or website — no card details needed.</p>
+            </div>
+            <div class="flex gap-3">
+              <span class="font-bold text-[#4d3bd8] w-4 shrink-0">2</span>
+              <p>You approve the payment yourself, the same way you'd log in to your banking app.</p>
+            </div>
+            <div class="flex gap-3">
+              <span class="font-bold text-[#4d3bd8] w-4 shrink-0">3</span>
+              <p>The payment is sent directly from your account, and you're returned to finish checking out.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 mt-5 p-3 rounded-xl bg-[#f4f4f6]">
+            <i class="fa-solid fa-shield-halved text-[#4d3bd8] text-lg shrink-0"></i>
+            <p class="text-xs leading-4 text-[#646477]"><span class="font-semibold text-[#1f1f25]">Secured by TrueLayer.</span> Payments are initiated by TrueLayer, an FCA-authorised open banking provider — your bank credentials are never shared with the merchant.</p>
+          </div>
+          <button onclick="closeLearnMoreModal()" class="w-full mt-5 h-12 rounded-xl bg-[#1f1f25] text-white font-bold text-base hover:brightness-110 transition">Got it</button>
         </div>
-        <div class="flex flex-col gap-3 text-sm leading-5 text-[#1f1f25]">
-          <div class="flex gap-3">
-            <span class="font-bold text-[#4d3bd8] w-4 shrink-0">1</span>
-            <p>You're securely redirected to your own bank's app or website — no card details needed.</p>
-          </div>
-          <div class="flex gap-3">
-            <span class="font-bold text-[#4d3bd8] w-4 shrink-0">2</span>
-            <p>You approve the payment yourself, the same way you'd log in to your banking app.</p>
-          </div>
-          <div class="flex gap-3">
-            <span class="font-bold text-[#4d3bd8] w-4 shrink-0">3</span>
-            <p>The payment is sent directly from your account, and you're returned to finish checking out.</p>
-          </div>
-        </div>
-        <div class="flex items-center gap-3 mt-5 p-3 rounded-xl bg-[#f4f4f6]">
-          <i class="fa-solid fa-shield-halved text-[#4d3bd8] text-lg shrink-0"></i>
-          <p class="text-xs leading-4 text-[#646477]"><span class="font-semibold text-[#1f1f25]">Secured by TrueLayer.</span> Payments are initiated by TrueLayer, an FCA-authorised open banking provider — your bank credentials are never shared with the merchant.</p>
-        </div>
-        <button onclick="closeLearnMoreModal()" class="w-full mt-5 h-12 rounded-xl bg-[#1f1f25] text-white font-bold text-base hover:brightness-110 transition">Got it</button>
       </div>
     </div>
   </div>
@@ -429,7 +432,7 @@ function pbbButtonContent(step) {
 }
 
 function buildGroupA(step) {
-  return `<div class="absolute top-0 left-0 w-full min-h-full bg-white flex flex-col items-center gap-6 px-4 py-10">
+  return `<div class="screen-content absolute top-0 left-0 w-full min-h-full bg-white flex flex-col items-center gap-6 px-4 py-10">
       <div class="h-6 shrink-0"><img src="${asset('logo-travelnow.svg')}" class="h-6" /></div>
       ${hotelCard()}
       <div class="flex flex-col gap-4 w-full">
@@ -610,7 +613,7 @@ function updatePbbVariable(prevStep) {
 function buildGroupB() {
   const b = currentBank();
   return `
-    <div class="absolute top-0 left-0 w-full min-h-full flex flex-col items-center justify-center cursor-pointer" style="background:${b.color}" onclick="goto('bankreview')">
+    <div class="screen-content absolute top-0 left-0 w-full min-h-full flex flex-col items-center justify-center cursor-pointer" style="background:${b.color}" onclick="goto('bankreview')">
       <div class="absolute top-[59px] left-1/2 -translate-x-1/2">
         <div class="w-[150px] h-[150px] bg-black rounded-[42px] shadow-2xl flex items-center justify-center">
           <div class="w-[95px] h-[96px] rounded-[17px] overflow-hidden relative">
@@ -672,7 +675,7 @@ function buildGroupC(step) {
   const overlay = step === 'bankauth' ? faceOverlayHTML() : '';
   const hint = step === 'bankauth' ? `<p id="tapHint" class="absolute bottom-2 w-full text-center text-black/30 text-xs">Tap to continue</p>` : '';
   const clickAttr = step === 'bankauth' ? ` onclick="goto('success')"` : '';
-  return `<div id="groupC" class="absolute top-0 left-0 w-full min-h-full bg-[#f7f7f7]"${clickAttr}>
+  return `<div id="groupC" class="screen-content absolute top-0 left-0 w-full min-h-full bg-[#f7f7f7]"${clickAttr}>
       ${bankMerchantBody()}
       <div id="faceOverlaySlot">${overlay}</div>
       ${hint}
@@ -714,7 +717,7 @@ function updateOverlayC() {
 // ---------------------------------------------------------------------------
 function buildGroupD() {
   return `
-    <div class="absolute top-0 left-0 w-full min-h-full bg-white flex flex-col items-center gap-6 px-4 py-10">
+    <div class="screen-content absolute top-0 left-0 w-full min-h-full bg-white flex flex-col items-center gap-6 px-4 py-10">
       <div class="h-6 shrink-0"><img src="${asset('logo-travelnow.svg')}" class="h-6" /></div>
       <div class="flex-1 w-full flex flex-col items-center justify-center gap-6 px-2 text-center">
         <i class="fa-solid fa-circle-check text-[#f33b92] text-[80px]"></i>
@@ -754,7 +757,10 @@ function renderTransition(prevStep) {
   // both blended together — e.g. a light card layout ghosted under a dark
   // full-bleed Face ID screen — which read as the whole section flashing/
   // shifting rather than a clean transition.
-  const old = phone.firstElementChild;
+  // Found by class rather than firstElementChild: #phone also permanently
+  // hosts the Learn-more sheet as a sibling, and that must never be treated
+  // as "the old screen" and torn down by a transition.
+  const old = phone.querySelector('.screen-content');
   mountedGroup = newGroup;
 
   const mountNext = () => {
@@ -859,6 +865,16 @@ function resetFlow() {
 // anything wired into the step/transition system above.
 // ---------------------------------------------------------------------------
 function openLearnMoreModal() {
+  const phone = document.getElementById('phone');
+  // The sheet is positioned absolute inset-0 *within* #phone, which is
+  // itself the scroll container — so its coordinate frame is #phone's
+  // unscrolled top. Freezing scroll and snapping back to it keeps the
+  // backdrop/sheet aligned with whatever's actually visible instead of
+  // drifting out of place if the screen underneath was scrolled down.
+  phone.dataset.scrollLocked = '1';
+  phone.scrollTop = 0;
+  phone.classList.remove('overflow-y-auto');
+  phone.classList.add('overflow-hidden');
   document.getElementById('learnMoreModal').classList.remove('pointer-events-none');
   document.getElementById('learnMoreBackdrop').classList.remove('opacity-0');
   document.getElementById('learnMoreSheet').classList.remove('translate-y-full');
@@ -870,7 +886,15 @@ function closeLearnMoreModal() {
   // Wait for the slide-down/fade-out to finish before it stops blocking
   // clicks — removing pointer-events too early would let taps on the sheet
   // reach the screen underneath while it's still visibly sliding away.
-  setTimeout(() => document.getElementById('learnMoreModal').classList.add('pointer-events-none'), 300);
+  setTimeout(() => {
+    document.getElementById('learnMoreModal').classList.add('pointer-events-none');
+    const phone = document.getElementById('phone');
+    if (phone.dataset.scrollLocked) {
+      delete phone.dataset.scrollLocked;
+      phone.classList.remove('overflow-hidden');
+      phone.classList.add('overflow-y-auto');
+    }
+  }, 300);
 }
 
 // ---------------------------------------------------------------------------
