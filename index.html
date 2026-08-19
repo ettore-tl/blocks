@@ -423,11 +423,11 @@ function subShellContent(step) {
     <div class="mt-3 border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-4 w-full">
       <div class="flex items-center gap-2">
         <button id="subBack" onclick="${subShellBackOnclick(step)}" class="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[#f4f4f6] shrink-0"><i class="fa-solid fa-chevron-left text-[#060606]"></i></button>
-        <p id="subTitle" class="font-bold text-base text-[#060606]">${subShellTitle(step)}</p>
+        <p id="subTitle" class="font-bold text-base text-[#060606] overflow-hidden">${subShellTitle(step)}</p>
       </div>
       <div class="flex justify-between font-medium text-base text-[#060606]"><p>Pay in Full</p><p>£1,500.00</p></div>
       ${separator()}
-      <div id="subBody" class="w-full">${subShellBody(step)}</div>
+      <div id="subBody" class="w-full overflow-hidden">${subShellBody(step)}</div>
     </div>`;
 }
 
@@ -452,8 +452,8 @@ function buildGroupA(step) {
             <div class="flex-1 flex flex-col min-w-0">
               ${pbbHeader()}
               <div class="mt-3">${pbbBlurb()}</div>
-              <div id="pbbBox" class="w-full">${pbbBoxContent(step)}</div>
-              <div id="pbbButtonRow" class="w-full">${pbbButtonContent(step)}</div>
+              <div id="pbbBox" class="w-full overflow-hidden">${pbbBoxContent(step)}</div>
+              <div id="pbbButtonRow" class="w-full overflow-hidden">${pbbButtonContent(step)}</div>
             </div>
           </div>
           ${separator()}
@@ -541,7 +541,8 @@ async function collapseElement(el, duration) {
   if (!isCurrentGeneration(el, g)) return;
   el.innerHTML = '';
   el.style.height = 'auto';
-  el.style.overflow = '';
+  // overflow stays 'hidden' permanently — see the note in crossfadeContent
+  // below on why it's never reverted to visible.
   el.style.opacity = '1'; // reset so it's visible next time content fills it
   el.style.transition = ''; // fully idle now — nothing should still be "live"
 }
@@ -579,7 +580,12 @@ async function crossfadeContent(el, newHTML) {
   await waitForTransition(el, 'height', TUNING.resize + 40);
   if (!isCurrentGeneration(el, g)) return;
   el.style.height = 'auto';
-  el.style.overflow = '';
+  // overflow is left 'hidden' rather than reverted to visible/default: these
+  // containers never legitimately need to show overflowing content once
+  // settled, and repeatedly toggling overflow on/off around a border-radius
+  // + animated-height element is what triggered a Safari-specific repaint
+  // artifact (a stray shadow band bleeding into unrelated rows below,
+  // appearing on scroll) — keeping it constant avoids the layer churn.
 
   // The box is now exactly the right size — safe to reveal the content.
   el.style.transition = `opacity ${TUNING.fadeIn}ms ${TUNING.easeOut}`;
