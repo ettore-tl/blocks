@@ -1,4 +1,4 @@
-# Pay by Bank — Interactive Demo
+# Blocks
 
 An interactive, single-file HTML/CSS/JS mockup of a Pay by Bank (Open Banking PIS) checkout flow, wrapped in a pure-CSS iPhone frame.
 
