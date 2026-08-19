@@ -75,6 +75,41 @@
     <span class="iphone-btn iphone-btn-vol-down"></span>
     <span class="iphone-btn iphone-btn-power"></span>
     <div id="phone" class="w-full h-full rounded-[42px] overflow-y-auto overflow-x-hidden bg-white"></div>
+
+    <!-- Learn more bottom sheet — a sibling of #phone (not a child), clipped
+         to the same rounded frame, so it overlays the screen regardless of
+         #phone's own scroll position instead of scrolling away with it. -->
+    <div id="learnMoreModal" class="absolute inset-0 rounded-[42px] overflow-hidden pointer-events-none z-40">
+      <div id="learnMoreBackdrop" onclick="closeLearnMoreModal()" class="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-200"></div>
+      <div id="learnMoreSheet" class="absolute bottom-0 left-0 right-0 bg-white rounded-t-[28px] px-6 pt-3 pb-8 translate-y-full transition-transform duration-300 ease-out" style="box-shadow:0 -8px 30px rgba(0,0,0,0.15)">
+        <div class="w-9 h-1 rounded-full bg-[#d0d0d7] mx-auto mb-5"></div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-11 h-11 rounded-full bg-[#afadff33] flex items-center justify-center shrink-0">
+            <img src="assets/pbb-mark.svg" class="h-5 w-5" />
+          </div>
+          <p class="font-semibold text-lg text-[#060606]">How Pay by Bank works</p>
+        </div>
+        <div class="flex flex-col gap-3 text-sm leading-5 text-[#1f1f25]">
+          <div class="flex gap-3">
+            <span class="font-bold text-[#4d3bd8] w-4 shrink-0">1</span>
+            <p>You're securely redirected to your own bank's app or website — no card details needed.</p>
+          </div>
+          <div class="flex gap-3">
+            <span class="font-bold text-[#4d3bd8] w-4 shrink-0">2</span>
+            <p>You approve the payment yourself, the same way you'd log in to your banking app.</p>
+          </div>
+          <div class="flex gap-3">
+            <span class="font-bold text-[#4d3bd8] w-4 shrink-0">3</span>
+            <p>The payment is sent directly from your account, and you're returned to finish checking out.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 mt-5 p-3 rounded-xl bg-[#f4f4f6]">
+          <i class="fa-solid fa-shield-halved text-[#4d3bd8] text-lg shrink-0"></i>
+          <p class="text-xs leading-4 text-[#646477]"><span class="font-semibold text-[#1f1f25]">Secured by TrueLayer.</span> Payments are initiated by TrueLayer, an FCA-authorised open banking provider — your bank credentials are never shared with the merchant.</p>
+        </div>
+        <button onclick="closeLearnMoreModal()" class="w-full mt-5 h-12 rounded-xl bg-[#1f1f25] text-white font-bold text-base hover:brightness-110 transition">Got it</button>
+      </div>
+    </div>
   </div>
 
   <button id="tunerToggle" onclick="toggleTuner()" class="hidden fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-[#1f1f25] text-white shadow-xl flex items-center justify-center text-2xl hover:scale-105 transition" title="Animation tuner">
@@ -229,7 +264,7 @@ function pbbHeader() {
 }
 
 function pbbBlurb() {
-  return `<p class="text-sm leading-5 text-[#060606] w-full"><b>Pay in full</b> <b>now</b> or <b>spread the cost</b> for up to 24 months, securely from your bank app. <span class="text-[#4d3bd8] font-semibold cursor-default">Learn more</span></p>`;
+  return `<p class="text-sm leading-5 text-[#060606] w-full"><b>Pay in full</b> <b>now</b> or <b>spread the cost</b> for up to 24 months, securely from your bank app. <span class="text-[#4d3bd8] font-semibold cursor-pointer" onclick="event.stopPropagation(); openLearnMoreModal()">Learn more</span></p>`;
 }
 
 function paymentIcon(type) {
@@ -819,6 +854,26 @@ function resetFlow() {
 }
 
 // ---------------------------------------------------------------------------
+// "Learn more" bottom sheet — a generic explainer, the same on every screen
+// it appears on, so it's plain markup toggled with classes rather than
+// anything wired into the step/transition system above.
+// ---------------------------------------------------------------------------
+function openLearnMoreModal() {
+  document.getElementById('learnMoreModal').classList.remove('pointer-events-none');
+  document.getElementById('learnMoreBackdrop').classList.remove('opacity-0');
+  document.getElementById('learnMoreSheet').classList.remove('translate-y-full');
+}
+
+function closeLearnMoreModal() {
+  document.getElementById('learnMoreBackdrop').classList.add('opacity-0');
+  document.getElementById('learnMoreSheet').classList.add('translate-y-full');
+  // Wait for the slide-down/fade-out to finish before it stops blocking
+  // clicks — removing pointer-events too early would let taps on the sheet
+  // reach the screen underneath while it's still visibly sliding away.
+  setTimeout(() => document.getElementById('learnMoreModal').classList.add('pointer-events-none'), 300);
+}
+
+// ---------------------------------------------------------------------------
 // Animation tuner — a small on-page panel for live-adjusting every duration/
 // easing in TUNING. Every animation function above reads TUNING fresh each
 // time it runs, so a slider change takes effect on the very next transition
@@ -957,6 +1012,7 @@ renderTransition();
 // Press "R" to restart the demo — plain keypress only, so Cmd/Ctrl+R still
 // reloads the page as usual instead of being hijacked.
 window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeLearnMoreModal(); return; }
   if (e.key.toLowerCase() !== 'r') return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   resetFlow();
