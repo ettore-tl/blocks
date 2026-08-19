@@ -543,6 +543,7 @@ async function collapseElement(el, duration) {
   el.style.height = 'auto';
   el.style.overflow = '';
   el.style.opacity = '1'; // reset so it's visible next time content fills it
+  el.style.transition = ''; // fully idle now — nothing should still be "live"
 }
 
 // Fades `el`'s current content out, resizes it to fit `newHTML` WHILE STILL
@@ -584,6 +585,9 @@ async function crossfadeContent(el, newHTML) {
   el.style.transition = `opacity ${TUNING.fadeIn}ms ${TUNING.easeOut}`;
   forceReflow(el);
   el.style.opacity = '1';
+  await waitForTransition(el, 'opacity', TUNING.fadeIn + 40);
+  if (!isCurrentGeneration(el, g)) return;
+  el.style.transition = ''; // fully idle now — nothing should still be "live"
 }
 
 // bankselect <-> review share one shell (see subShellContent) — only the
@@ -783,6 +787,13 @@ function renderTransition(prevStep) {
     requestAnimationFrame(() => {
       next.style.transition = `opacity ${TUNING.screenFadeIn}ms ${TUNING.easeOut}`;
       next.style.opacity = '1';
+      // `next` is long-lived (the whole time the user's on this screen) —
+      // leaving `transition` set after it settles risks the same stray
+      // repaint artifacts a lingering transition caused elsewhere (see
+      // crossfadeContent/collapseElement).
+      waitForTransition(next, 'opacity', TUNING.screenFadeIn + 40).then(() => {
+        next.style.transition = '';
+      });
     });
   };
 
