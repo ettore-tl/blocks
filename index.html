@@ -875,14 +875,20 @@ function resetFlow() {
 // takes you to your bank's own site, which is what this mimics.
 // ---------------------------------------------------------------------------
 const dtState = {
-  method: null,     // null | 'pbb' | 'card' | 'paypal'
-  pbbStep: 'plan',  // 'plan' | 'bank' | 'review' — only relevant while method === 'pbb'
-  bank: null,
-  stage: 'checkout', // 'checkout' | 'redirecting' | 'bankconfirm' | 'success'
+  selectedMethod: null, // null | 'pbb' | 'card' | 'paypal'
+  selectedBank: null,
+  step: 'method',    // 'method' | 'pbb' | 'bankselect' | 'review' — mirrors mobile's `state.step`
+  stage: 'checkout', // 'checkout' | 'redirecting' | 'bankconfirm' | 'success' — which page is mounted
 };
 let dtAutoTimer = null;
+// Tracks which page is currently in #desktopStage, mirroring mobile's
+// `mountedGroup` — lets dtRenderTransition tell a genuine page swap (fade
+// out/in) apart from an in-place step change within the checkout page
+// (handled instead by dtUpdatePbbVariable, exactly like mobile's group-A
+// step changes never remount buildGroupA from scratch).
+let dtMountedPage = null;
 
-function dtBank() { return BANKS[dtState.bank] || BANKS.monzo; }
+function dtBank() { return BANKS[dtState.selectedBank] || BANKS.monzo; }
 
 function dtOrderSummary() {
   return `
@@ -918,7 +924,7 @@ function dtOrderSummary() {
 // mobile flow's `state`/plain actions. Only the outer page chrome (logo,
 // heading, two-column layout, sticky order summary) is desktop-native.
 function dtCardRow() {
-  const sel = dtState.method === 'card';
+  const sel = dtState.selectedMethod === 'card';
   return `
     <div class="flex items-center gap-3 py-1 w-full cursor-pointer" onclick="dtSelectMethod('card')">
       ${radioCircle(sel)}
@@ -933,7 +939,7 @@ function dtCardRow() {
 }
 
 function dtPaypalRow() {
-  const sel = dtState.method === 'paypal';
+  const sel = dtState.selectedMethod === 'paypal';
   return `
     <div class="flex items-center gap-3 py-1 w-full cursor-pointer" onclick="dtSelectMethod('paypal')">
       ${radioCircle(sel)}
@@ -944,17 +950,20 @@ function dtPaypalRow() {
     </div>`;
 }
 
+// Pay in Full / Apply for Credit sit directly on the page's grey background
+// (unlike mobile, where the whole screen is already white), so they need an
+// explicit white fill to read as cards rather than blending into the page.
 function dtPlanBox() {
   return `
     <div class="mt-3 flex flex-col gap-2 w-full">
-      <div class="border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-2 cursor-pointer hover:bg-[#fafafa]" onclick="dtSetPbbStep('bank')">
+      <div class="bg-white border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-2 cursor-pointer hover:bg-[#fafafa]" onclick="dtGoto('bankselect')">
         <div class="flex items-center gap-2 w-full">
           <p class="flex-1 font-bold text-base text-[#060606]">Pay in Full</p>
           <i class="fa-solid fa-chevron-right text-[#4d3bd8] text-sm"></i>
         </div>
         <p class="font-medium text-base text-[#060606]">£1,500.00</p>
       </div>
-      <div class="border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-2">
+      <div class="bg-white border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-2">
         <div class="flex items-center gap-2 w-full">
           <p class="flex-1 font-bold text-base text-[#060606]">Apply for Credit</p>
           <i class="fa-solid fa-chevron-right text-[#4d3bd8] text-sm"></i>
@@ -971,7 +980,7 @@ function dtPlanBox() {
 
 function dtBankGridButton(id) {
   const b = BANKS[id];
-  const sel = dtState.bank === id;
+  const sel = dtState.selectedBank === id;
   const btnCls = sel
     ? 'shadow-[inset_0_0_0_2px_#4d3bd8] bg-[#f2f1ff]'
     : 'shadow-[inset_0_0_0_1px_#d0d0d7] bg-white hover:shadow-[inset_0_0_0_1px_#4d3bd8] hover:bg-[#f8f8ff]';
@@ -981,11 +990,11 @@ function dtBankGridButton(id) {
     </button>`;
 }
 
-function dtSubShellTitle(step) { return step === 'bank' ? 'Select your bank' : 'Review'; }
-function dtSubShellBackOnclick(step) { return step === 'bank' ? "dtSetPbbStep('plan')" : "dtSetPbbStep('bank')"; }
+function dtSubShellTitle(step) { return step === 'bankselect' ? 'Select your bank' : 'Review'; }
+function dtSubShellBackOnclick(step) { return step === 'bankselect' ? "dtGoto('pbb')" : 'dtBackToBankSelect()'; }
 
 function dtSubShellBody(step) {
-  if (step === 'bank') {
+  if (step === 'bankselect') {
     return `
       <div class="flex flex-col gap-4 w-full items-center">
         <div class="grid grid-cols-5 gap-[13px] w-full">
@@ -1002,33 +1011,35 @@ function dtSubShellBody(step) {
           <div class="w-8 h-8 rounded-md overflow-hidden bg-white shadow-[inset_0_0_0_1px_#ececef]">${bankIconInner(b)}</div>
         </div>
         <p class="flex-1 font-medium text-base text-[#060606]">${b.name}</p>
-        <button class="text-[#4d3bd8] text-sm font-semibold shrink-0" onclick="dtSetPbbStep('bank')">Change</button>
+        <button class="text-[#4d3bd8] text-sm font-semibold shrink-0" onclick="dtBackToBankSelect()">Change</button>
       </div>
       <p class="text-[11px] leading-[18px] text-[#40404c]">By continuing you are permitting TrueLayer to initiate a payment from your bank account. You also agree to its <span class="text-[#4d3bd8] font-semibold underline cursor-default">Terms of Service</span> and <span class="text-[#4d3bd8] font-semibold underline cursor-default">Privacy Policy</span>.</p>
     </div>`;
 }
 
+// Same white-background reasoning as dtPlanBox above — the bank-grid and
+// review "sub-shell" also need an explicit fill on desktop.
 function dtSubShellContent(step) {
   return `
-    <div class="mt-3 border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-4 w-full">
+    <div class="mt-3 bg-white border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-4 w-full">
       <div class="flex items-center gap-2">
-        <button onclick="${dtSubShellBackOnclick(step)}" class="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[#f4f4f6] shrink-0"><i class="fa-solid fa-chevron-left text-[#060606]"></i></button>
-        <p class="font-bold text-base text-[#060606] overflow-hidden">${dtSubShellTitle(step)}</p>
+        <button id="dtSubBack" onclick="${dtSubShellBackOnclick(step)}" class="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[#f4f4f6] shrink-0"><i class="fa-solid fa-chevron-left text-[#060606]"></i></button>
+        <p id="dtSubTitle" class="font-bold text-base text-[#060606] overflow-hidden">${dtSubShellTitle(step)}</p>
       </div>
       <div class="flex justify-between font-medium text-base text-[#060606]"><p>Pay in Full</p><p>£1,500.00</p></div>
       ${separator()}
-      <div class="w-full overflow-hidden">${dtSubShellBody(step)}</div>
+      <div id="dtSubBody" class="w-full overflow-hidden">${dtSubShellBody(step)}</div>
     </div>`;
 }
 
 function dtPbbBoxContent() {
-  if (dtState.method !== 'pbb') return '';
-  if (dtState.pbbStep === 'plan') return dtPlanBox();
-  return dtSubShellContent(dtState.pbbStep);
+  if (dtState.step === 'method') return '';
+  if (dtState.step === 'pbb') return dtPlanBox();
+  return dtSubShellContent(dtState.step);
 }
 
 function dtPbbButtonContent() {
-  if (dtState.method !== 'pbb' || dtState.pbbStep !== 'review') return '';
+  if (dtState.step !== 'review') return '';
   const b = dtBank();
   return `
     <button onclick="dtPay()" class="mt-4 w-full h-12 rounded-xl bg-[#afadff] flex items-center justify-center gap-2 font-bold text-base text-[#060606] hover:brightness-95 transition">
@@ -1036,20 +1047,22 @@ function dtPbbButtonContent() {
     </button>`;
 }
 
+function dtPbbCheckedFor() { return dtState.selectedMethod === 'pbb'; }
+
 function dtHandlePbbHeaderClick() {
-  if (dtState.method === 'pbb') return;
-  dtSelectMethod('pbb');
+  if (dtState.step !== 'method') return;
+  dtChoosePayByBank();
 }
 
 function dtPbbHeaderRow() {
   return `
-    <div class="flex gap-3 py-1 w-full ${dtState.method !== 'pbb' ? 'cursor-pointer' : ''}" onclick="dtHandlePbbHeaderClick()">
-      <div class="shrink-0">${radioCircle(dtState.method === 'pbb')}</div>
+    <div id="dtPbbHeaderRow" class="flex gap-3 py-1 w-full ${dtState.step === 'method' ? 'cursor-pointer' : ''}" onclick="dtHandlePbbHeaderClick()">
+      <div id="dtPbbRadio" class="shrink-0">${radioCircle(dtPbbCheckedFor())}</div>
       <div class="flex-1 flex flex-col min-w-0">
         ${pbbHeader()}
         <div class="mt-3">${pbbBlurb()}</div>
-        <div class="w-full">${dtPbbBoxContent()}</div>
-        <div class="w-full">${dtPbbButtonContent()}</div>
+        <div id="dtPbbBox" class="w-full overflow-hidden">${dtPbbBoxContent()}</div>
+        <div id="dtPbbButtonRow" class="w-full overflow-hidden">${dtPbbButtonContent()}</div>
       </div>
     </div>`;
 }
@@ -1059,23 +1072,23 @@ function buildDesktopCheckoutPage() {
     <div class="w-full max-w-5xl mx-auto grid grid-cols-[1fr_380px] gap-16 px-10 py-14">
       <div class="flex flex-col gap-8 min-w-0">
         <img src="${asset('logo-travelnow.svg')}" class="h-7 w-fit" />
-        <div>
-          <h1 class="text-[28px] font-bold text-[#1f1f25]">Checkout</h1>
-          <p class="text-[#646477] mt-1">Review your booking and choose how to pay.</p>
-        </div>
         <div class="flex flex-col gap-4 w-full">
           <p class="font-semibold text-xl text-[#060606] w-full">Choose how to pay</p>
           <div class="flex flex-col gap-4 w-full">
             ${dtPbbHeaderRow()}
             ${separator()}
-            ${dtCardRow()}
+            <div id="dtCardRowSlot">${dtCardRow()}</div>
             ${separator()}
-            ${dtPaypalRow()}
+            <div id="dtPaypalRowSlot">${dtPaypalRow()}</div>
           </div>
         </div>
       </div>
 
-      <div>
+      <div class="flex flex-col gap-4">
+        <div>
+          <h1 class="text-[28px] font-bold text-[#1f1f25]">Checkout</h1>
+          <p class="text-[#646477] mt-1">Review your booking and choose how to pay.</p>
+        </div>
         <div class="sticky top-14 border border-[#d0d0d7] rounded-2xl p-6 flex flex-col gap-5 bg-white">
           ${dtOrderSummary()}
         </div>
@@ -1129,36 +1142,146 @@ function buildDesktopSuccessPage() {
     </div>`;
 }
 
-function renderDesktopCheckout() {
-  const el = document.getElementById('desktopStage');
-  if (dtState.stage === 'success') { el.innerHTML = buildDesktopSuccessPage(); return; }
-  if (dtState.stage === 'redirecting' || dtState.stage === 'bankconfirm') { el.innerHTML = buildDesktopBankPage(); return; }
-  el.innerHTML = buildDesktopCheckoutPage();
+function dtBuildPageHTML(page) {
+  if (page === 'success') return buildDesktopSuccessPage();
+  if (page === 'redirecting' || page === 'bankconfirm') return buildDesktopBankPage();
+  return buildDesktopCheckoutPage();
 }
 
-function dtSelectMethod(method) {
-  dtState.method = method;
-  if (method === 'pbb') dtState.pbbStep = 'plan';
-  renderDesktopCheckout();
+// Full-page swap for #desktopStage — the desktop equivalent of mobile's
+// renderTransition() "crossing groups" branch: fades the old page out
+// completely, then fades the new one in (same TUNING.screenFadeOut/In
+// values), rather than overlapping the two or swapping instantly. Only
+// called when the *page* itself changes (checkout -> redirecting ->
+// bankconfirm -> success); in-place step changes within the checkout page
+// go through dtUpdatePbbVariable instead, exactly like mobile never
+// remounts buildGroupA just to move between its own steps.
+function dtRenderTransition() {
+  const container = document.getElementById('desktopStage');
+  const old = container.firstElementChild;
+  dtMountedPage = dtState.stage;
+
+  const mountNext = () => {
+    const temp = document.createElement('div');
+    temp.innerHTML = dtBuildPageHTML(dtState.stage);
+    const next = temp.firstElementChild;
+    next.style.opacity = '0';
+    container.appendChild(next);
+    requestAnimationFrame(() => {
+      next.style.transition = `opacity ${TUNING.screenFadeIn}ms ${TUNING.easeOut}`;
+      next.style.opacity = '1';
+      waitForTransition(next, 'opacity', TUNING.screenFadeIn + 40).then(() => {
+        next.style.transition = '';
+      });
+    });
+  };
+
+  if (old) {
+    old.style.transition = `opacity ${TUNING.screenFadeOut}ms ${TUNING.easeIn}`;
+    old.style.opacity = '0';
+    setTimeout(() => { old.remove(); mountNext(); }, TUNING.screenFadeOut);
+  } else {
+    mountNext();
+  }
 }
-function dtSetPbbStep(step) { dtState.pbbStep = step; renderDesktopCheckout(); }
-function dtSelectBank(id) { dtState.bank = id; dtState.pbbStep = 'review'; renderDesktopCheckout(); }
+
+// Mounts the checkout page the first time desktop mode is entered. Later
+// toggles between mobile/desktop just show/hide #desktopStage via CSS (see
+// #stage.mode-* rules) — its DOM persists, so this never re-fires and never
+// interrupts an in-progress selection.
+function dtEnsureMounted() {
+  if (dtMountedPage === null) dtRenderTransition();
+}
+
+// Radio state (Pay by Bank / Card / PayPal) is shared, static markup across
+// every checkout-page step — updating it is an instant swap, mirroring
+// mobile's syncMethodRadios().
+function dtSyncMethodRadios() {
+  const radio = document.getElementById('dtPbbRadio');
+  const cardSlot = document.getElementById('dtCardRowSlot');
+  const paypalSlot = document.getElementById('dtPaypalRowSlot');
+  const headerRow = document.getElementById('dtPbbHeaderRow');
+  if (radio) radio.innerHTML = radioCircle(dtPbbCheckedFor());
+  if (cardSlot) cardSlot.innerHTML = dtCardRow();
+  if (paypalSlot) paypalSlot.innerHTML = dtPaypalRow();
+  if (headerRow) headerRow.classList.toggle('cursor-pointer', dtState.step === 'method');
+}
+
+// bankselect <-> review share one shell — only the title and body beneath it
+// differ, so only those two crossfade (mirrors mobile's updateSubShell()).
+function dtUpdateSubShell(step) {
+  const backBtn = document.getElementById('dtSubBack');
+  const title = document.getElementById('dtSubTitle');
+  const body = document.getElementById('dtSubBody');
+  if (backBtn) backBtn.setAttribute('onclick', dtSubShellBackOnclick(step));
+  if (title) crossfadeContent(title, dtSubShellTitle(step));
+  if (body) crossfadeContent(body, dtSubShellBody(step));
+}
+
+// Mirrors mobile's updatePbbVariable() — patches only the parts of the
+// checkout page that actually differ between two group-A-equivalent steps,
+// using the exact same crossfadeContent/collapseElement animation engine
+// (and TUNING values) as mobile, instead of a full re-render.
+function dtUpdatePbbVariable(prevStep) {
+  const box = document.getElementById('dtPbbBox');
+  const btnRow = document.getElementById('dtPbbButtonRow');
+  if (!box) return;
+
+  if (SUBSHELL_STEPS.has(prevStep) && SUBSHELL_STEPS.has(dtState.step)) {
+    dtUpdateSubShell(dtState.step);
+  } else {
+    crossfadeContent(box, dtPbbBoxContent());
+  }
+
+  if (btnRow) crossfadeContent(btnRow, dtPbbButtonContent());
+}
+
+function dtGoto(step) {
+  if (step === dtState.step) return;
+  const prevStep = dtState.step;
+  dtState.step = step;
+  dtUpdatePbbVariable(prevStep);
+}
+
+// Picking Card or PayPal abandons whatever progress was made into Pay by
+// Bank and resets back to the unselected 'method' step — mirrors mobile's
+// selectMethod() exactly.
+function dtSelectMethod(method) {
+  dtState.selectedMethod = method;
+  dtState.selectedBank = null;
+  if (dtState.step !== 'method') dtGoto('method');
+  dtSyncMethodRadios();
+}
+
+function dtChoosePayByBank() {
+  dtState.selectedMethod = 'pbb';
+  dtGoto('pbb');
+  dtSyncMethodRadios();
+}
+
+function dtSelectBank(id) { dtState.selectedBank = id; dtGoto('review'); }
+
+function dtBackToBankSelect() {
+  dtState.selectedBank = null;
+  dtGoto('bankselect');
+}
 
 function dtPay() {
   if (dtAutoTimer) clearTimeout(dtAutoTimer);
   dtState.stage = 'redirecting';
-  renderDesktopCheckout();
-  dtAutoTimer = setTimeout(() => { dtState.stage = 'bankconfirm'; renderDesktopCheckout(); }, 1200);
+  dtRenderTransition();
+  dtAutoTimer = setTimeout(() => { dtState.stage = 'bankconfirm'; dtRenderTransition(); }, 1200);
 }
-function dtConfirm() { dtState.stage = 'success'; renderDesktopCheckout(); }
+function dtConfirm() { dtState.stage = 'success'; dtRenderTransition(); }
 
 function dtResetFlow() {
   if (dtAutoTimer) { clearTimeout(dtAutoTimer); dtAutoTimer = null; }
-  dtState.method = null;
-  dtState.pbbStep = 'plan';
-  dtState.bank = null;
+  dtState.selectedMethod = null;
+  dtState.selectedBank = null;
+  dtState.step = 'method';
   dtState.stage = 'checkout';
-  renderDesktopCheckout();
+  dtMountedPage = null; // force a full, fresh remount
+  dtRenderTransition();
 }
 
 function restartAll() { resetFlow(); dtResetFlow(); }
@@ -1184,7 +1307,7 @@ function applyViewMode() {
   if (mode === 'desktop') {
     label.textContent = 'Switch to mobile';
     icon.className = 'fa-solid fa-mobile-screen-button';
-    renderDesktopCheckout();
+    dtEnsureMounted();
   } else {
     label.textContent = 'Switch to desktop';
     icon.className = 'fa-solid fa-desktop';
