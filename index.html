@@ -1314,8 +1314,15 @@ function applyViewMode() {
   }
 }
 
+// Toggling to whichever mode the viewport would already pick on its own
+// clears the override back to null (auto) instead of pinning it — otherwise
+// switching to mobile and back to desktop on a wide window left
+// viewModeOverride stuck at 'desktop' forever, silently disabling the
+// automatic switch on every resize after that point.
 function toggleViewMode() {
-  viewModeOverride = effectiveViewMode() === 'desktop' ? 'mobile' : 'desktop';
+  const target = effectiveViewMode() === 'desktop' ? 'mobile' : 'desktop';
+  const natural = desktopBreakpoint.matches ? 'desktop' : 'mobile';
+  viewModeOverride = target === natural ? null : target;
   applyViewMode();
 }
 
