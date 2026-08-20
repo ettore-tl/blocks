@@ -250,7 +250,7 @@ function pbbHeader() {
 }
 
 function pbbBlurb() {
-  return `<p class="text-sm leading-5 text-[#060606] w-full"><b>Pay in full</b> <b>now</b> or <b>spread the cost</b> for up to 24 months, securely from your bank app. <span class="text-[#4d3bd8] font-semibold cursor-default">Learn more</span></p>`;
+  return `<p class="text-sm leading-5 text-[#060606] w-full"><b>Pay in full</b> <b>now</b> or <b>spread the cost</b> for up to 24 months, securely from your bank app. <span class="text-[#4d3bd8] font-semibold cursor-pointer" onclick="openLearnMoreModal(event)">Learn more</span></p>`;
 }
 
 function paymentIcon(type) {
@@ -1104,6 +1104,7 @@ function buildDesktopCheckoutPage() {
       </div>
 
       <div id="dtQrModal"></div>
+      <div id="dtLearnMoreModal"></div>
     </div>`;
 }
 
@@ -1213,6 +1214,139 @@ function dtSimulateScan() {
     dtRenderTransition(); // fades the whole checkout page (modal included) out, success in
   }, 1400);
 }
+
+// ---------------------------------------------------------------------------
+// "Learn more" modal — generic info about how Pay by Bank works. Shared
+// content (learnMoreModalBody) between two different presentations: a
+// bottom sheet clipped inside the phone frame on mobile, and a centered
+// dialog over the desktop checkout page — matching how each surface
+// normally presents this kind of secondary info.
+// ---------------------------------------------------------------------------
+function learnMoreModalBody() {
+  return `
+    <div class="flex items-center gap-3">
+      <div class="bg-[#afadff] border border-[#ececef] h-9 w-[52px] rounded shrink-0 flex items-center justify-center">
+        <img src="${asset('pbb-mark.svg')}" class="h-5 w-5" />
+      </div>
+      <p class="font-bold text-lg text-[#060606]">How Pay by Bank works</p>
+    </div>
+    <div class="flex flex-col gap-3 text-sm text-[#060606]">
+      <div class="flex gap-3 items-start">
+        <div class="w-6 h-6 rounded-full bg-[#f2f1ff] text-[#4d3bd8] font-bold text-xs flex items-center justify-center shrink-0">1</div>
+        <p class="pt-0.5">Choose your bank from the list — we support all major UK banks.</p>
+      </div>
+      <div class="flex gap-3 items-start">
+        <div class="w-6 h-6 rounded-full bg-[#f2f1ff] text-[#4d3bd8] font-bold text-xs flex items-center justify-center shrink-0">2</div>
+        <p class="pt-0.5">Log in securely with your own bank — we never see or store your banking credentials.</p>
+      </div>
+      <div class="flex gap-3 items-start">
+        <div class="w-6 h-6 rounded-full bg-[#f2f1ff] text-[#4d3bd8] font-bold text-xs flex items-center justify-center shrink-0">3</div>
+        <p class="pt-0.5">Review the payment details and confirm — it's sent straight from your account, instantly.</p>
+      </div>
+      <div class="flex gap-3 items-start">
+        <div class="w-6 h-6 rounded-full bg-[#f2f1ff] text-[#4d3bd8] font-bold text-xs flex items-center justify-center shrink-0">4</div>
+        <p class="pt-0.5">You're done — no card details to enter, no waiting for funds to clear.</p>
+      </div>
+    </div>
+    <p class="text-xs leading-[18px] text-[#646477]"><i class="fa-solid fa-lock text-[10px]"></i> Payments are secured and powered by TrueLayer, an FCA-authorised open banking provider.</p>`;
+}
+
+function learnMoreModalMobileHTML() {
+  return `
+    <div id="phoneModalOverlay" class="absolute inset-0 z-40 rounded-[inherit] bg-black/40 flex items-end" style="opacity:0" onclick="closeLearnMoreModal(event)">
+      <div id="phoneModalSheet" class="w-full bg-white rounded-t-3xl p-6 flex flex-col gap-4" style="transform:translateY(100%)" onclick="event.stopPropagation()">
+        <div class="w-9 h-1 rounded-full bg-[#d0d0d7] mx-auto -mt-2 mb-1"></div>
+        ${learnMoreModalBody()}
+        <button onclick="closeLearnMoreModal()" class="mt-1 h-11 rounded-xl bg-[#f4f4f6] font-bold text-[#060606]">Got it</button>
+      </div>
+    </div>`;
+}
+
+// Appended straight onto #phone (rather than a pre-existing static slot)
+// since it only needs to exist while open — it's added after the current
+// screen, so phone.firstElementChild (what renderTransition swaps on
+// navigation) is untouched by its presence.
+function openLearnMoreModalMobile() {
+  const phone = document.getElementById('phone');
+  if (!phone) return;
+  phone.scrollTop = 0;
+  phone.style.overflowY = 'hidden'; // frozen so the absolutely-positioned sheet stays put
+  const wrap = document.createElement('div');
+  wrap.innerHTML = learnMoreModalMobileHTML();
+  const overlay = wrap.firstElementChild;
+  phone.appendChild(overlay);
+  const sheet = document.getElementById('phoneModalSheet');
+  requestAnimationFrame(() => {
+    overlay.style.transition = 'opacity 200ms ease-out';
+    overlay.style.opacity = '1';
+    sheet.style.transition = 'transform 220ms ease-out';
+    sheet.style.transform = 'translateY(0)';
+  });
+}
+
+function learnMoreModalDesktopHTML() {
+  return `
+    <div id="learnMoreOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" style="opacity:0" onclick="closeLearnMoreModal(event)">
+      <div class="relative bg-white rounded-2xl shadow-2xl p-8 w-[400px] flex flex-col gap-4" onclick="event.stopPropagation()">
+        <button onclick="closeLearnMoreModal()" class="absolute top-4 right-4 w-7 h-7 rounded-md hover:bg-[#f4f4f6] flex items-center justify-center"><i class="fa-solid fa-xmark text-[#646477]"></i></button>
+        ${learnMoreModalBody()}
+      </div>
+    </div>`;
+}
+
+function openLearnMoreModalDesktop() {
+  const container = document.getElementById('dtLearnMoreModal');
+  if (!container) return;
+  container.innerHTML = learnMoreModalDesktopHTML();
+  const overlay = document.getElementById('learnMoreOverlay');
+  requestAnimationFrame(() => {
+    overlay.style.transition = 'opacity 180ms ease-out';
+    overlay.style.opacity = '1';
+  });
+}
+
+// Single entry point for both surfaces — routes on where the click actually
+// happened (inside the phone screen vs. the desktop page) rather than the
+// current view mode, since that's what's structurally true regardless.
+function openLearnMoreModal(event) {
+  if (event) event.stopPropagation(); // don't let it bubble into the pbb header row's own click handler
+  const phone = document.getElementById('phone');
+  if (phone && event && phone.contains(event.target)) {
+    openLearnMoreModalMobile();
+  } else {
+    openLearnMoreModalDesktop();
+  }
+}
+
+function closeLearnMoreModal(event) {
+  if (event) event.stopPropagation();
+  const phoneOverlay = document.getElementById('phoneModalOverlay');
+  if (phoneOverlay) {
+    const sheet = document.getElementById('phoneModalSheet');
+    phoneOverlay.style.transition = 'opacity 150ms ease-in';
+    phoneOverlay.style.opacity = '0';
+    if (sheet) { sheet.style.transition = 'transform 150ms ease-in'; sheet.style.transform = 'translateY(100%)'; }
+    setTimeout(() => {
+      phoneOverlay.remove();
+      const phone = document.getElementById('phone');
+      if (phone) phone.style.overflowY = 'auto';
+    }, 150);
+    return;
+  }
+  const dtOverlay = document.getElementById('learnMoreOverlay');
+  if (dtOverlay) {
+    dtOverlay.style.transition = 'opacity 150ms ease-in';
+    dtOverlay.style.opacity = '0';
+    setTimeout(() => {
+      const container = document.getElementById('dtLearnMoreModal');
+      if (container) container.innerHTML = '';
+    }, 150);
+  }
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeLearnMoreModal();
+});
 
 function buildDesktopSuccessPage() {
   return `
