@@ -57,24 +57,45 @@
   .iphone-btn-vol-down { left: 0px;  top: 240px; width: 3px; height: 58px; border-radius: 2px 0 0 2px; }
   .iphone-btn-power    { right: 0px; top: 195px; width: 3px; height: 92px; border-radius: 0 2px 2px 0;
                           background: linear-gradient(270deg, #48484a, #1c1c1e); box-shadow: 1px 0 1px rgba(0, 0, 0, 0.4); }
+
+  /* --- Layout modes. The mobile experience (#mobileStage) is completely
+     untouched — same iPhone mockup, same #phone, same everything. The
+     desktop experience (#desktopStage) is a separate, independent checkout
+     page with its own markup and state; the two don't share any DOM, only
+     the read-only BANKS data and a couple of rendering helpers. --- */
+  #stage.mode-mobile #desktopStage { display: none; }
+  #stage.mode-mobile #mobileStage { display: flex; }
+  #stage.mode-desktop #mobileStage { display: none; }
+  #stage.mode-desktop #desktopStage { display: block; width: 100%; }
+  /* The checkout page can be taller than the viewport — top-align it
+     instead of the mobile mode's vertical centering, so it scrolls
+     naturally from the top like a real page rather than clipping. */
+  #stage.mode-desktop { align-items: flex-start; }
 </style>
 </head>
-<body class="min-h-screen bg-[#eef0f3] flex flex-col items-center justify-center gap-5 py-10">
+<body class="min-h-screen bg-[#eef0f3] flex flex-col items-center gap-5 py-10">
 
   <div class="flex items-center gap-4">
     <p class="text-xs font-semibold tracking-wide text-[#646477] uppercase">Blocks · interactive demo</p>
-    <button onclick="resetFlow()" class="text-xs font-semibold text-[#4d3bd8] flex items-center gap-1 hover:text-[#3a2ca8] transition">
+    <button onclick="restartAll()" class="text-xs font-semibold text-[#4d3bd8] flex items-center gap-1 hover:text-[#3a2ca8] transition">
       <i class="fa-solid fa-rotate-left"></i> Restart
+    </button>
+    <button id="viewModeToggle" onclick="toggleViewMode()" class="text-xs font-semibold text-[#4d3bd8] flex items-center gap-1 hover:text-[#3a2ca8] transition">
+      <i class="fa-solid fa-desktop"></i> <span id="viewModeLabel">Switch to desktop</span>
     </button>
   </div>
 
-  <div class="iphone-mockup shrink-0">
-    <div class="iphone-island"></div>
-    <span class="iphone-btn iphone-btn-mute"></span>
-    <span class="iphone-btn iphone-btn-vol-up"></span>
-    <span class="iphone-btn iphone-btn-vol-down"></span>
-    <span class="iphone-btn iphone-btn-power"></span>
-    <div id="phone" class="w-full h-full rounded-[42px] overflow-y-auto overflow-x-hidden bg-white"></div>
+  <div id="stage" class="mode-mobile flex-1 w-full flex items-center justify-center">
+    <div id="mobileStage" class="iphone-mockup shrink-0">
+      <div class="iphone-island"></div>
+      <span class="iphone-btn iphone-btn-mute"></span>
+      <span class="iphone-btn iphone-btn-vol-up"></span>
+      <span class="iphone-btn iphone-btn-vol-down"></span>
+      <span class="iphone-btn iphone-btn-power"></span>
+      <div id="phone" class="w-full h-full rounded-[42px] overflow-y-auto overflow-x-hidden bg-white"></div>
+    </div>
+
+    <div id="desktopStage"></div>
   </div>
 
   <button id="tunerToggle" onclick="toggleTuner()" class="hidden fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-[#1f1f25] text-white shadow-xl flex items-center justify-center text-2xl hover:scale-105 transition" title="Animation tuner">
@@ -846,6 +867,290 @@ function resetFlow() {
 }
 
 // ---------------------------------------------------------------------------
+// Desktop checkout — a genuinely separate, simple checkout page (not the
+// phone screens reused in a card). It shares BANKS and a few pure rendering
+// helpers (asset, bankIconInner, paymentIcon) with the mobile flow, but has
+// its own state, its own markup, and no phone-app conceits (Face ID, an
+// "app switch" login screen) — on the web, paying by bank means the page
+// takes you to your bank's own site, which is what this mimics.
+// ---------------------------------------------------------------------------
+const dtState = {
+  method: null,     // null | 'pbb' | 'card' | 'paypal'
+  pbbStep: 'plan',  // 'plan' | 'bank' | 'review' — only relevant while method === 'pbb'
+  bank: null,
+  stage: 'checkout', // 'checkout' | 'redirecting' | 'bankconfirm' | 'success'
+};
+let dtAutoTimer = null;
+
+function dtBank() { return BANKS[dtState.bank] || BANKS.monzo; }
+
+function dtRadio(checked) {
+  return checked
+    ? `<div class="w-5 h-5 rounded-full bg-[#4d3bd8] flex items-center justify-center shrink-0"><i class="fa-solid fa-check text-white text-[10px]"></i></div>`
+    : `<div class="w-5 h-5 rounded-full border border-[#9090a2] shrink-0"></div>`;
+}
+
+function dtOrderSummary() {
+  return `
+    <div class="flex gap-4">
+      <div class="w-20 h-20 rounded-lg overflow-hidden shrink-0 bg-[#f4f4f6]">
+        <img src="${asset('hotel.png')}" class="w-full h-full object-cover object-bottom" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <p class="font-semibold text-base text-[#1f1f25]">Royal cabin Kyoto</p>
+        <div class="flex flex-col gap-0.5 text-xs text-[#646477]">
+          <p><i class="fa-solid fa-location-dot w-3"></i> Nagyo Ward, Kyoto, Japan</p>
+          <p><i class="fa-solid fa-star text-[#f33b92] w-3"></i> 4,8 · 64 reviews</p>
+        </div>
+      </div>
+    </div>
+    <div class="h-px bg-[#ececef]"></div>
+    <div class="flex justify-between text-sm">
+      <div><p class="font-bold text-[#1f1f25]">Dates</p><p class="text-[#1f1f25] mt-0.5">5-9 Sept 2026</p></div>
+      <div><p class="font-bold text-[#1f1f25]">Guests</p><p class="text-[#1f1f25] mt-0.5">2 adults</p></div>
+    </div>
+    <div class="h-px bg-[#ececef]"></div>
+    <div class="flex justify-between items-center">
+      <p class="font-bold text-base text-[#1f1f25]">Total</p>
+      <p class="text-lg text-[#1f1f25]">£1,500.00 GBP</p>
+    </div>`;
+}
+
+function dtPlanPanel() {
+  return `
+    <div class="mt-4 ml-8 flex flex-col gap-3 max-w-[420px]">
+      <p class="text-sm leading-5 text-[#1f1f25]"><b>Pay in full</b> now or <b>spread the cost</b> for up to 24 months, securely from your bank. <span class="text-[#4d3bd8] font-semibold cursor-default">Learn more</span></p>
+      <button onclick="event.stopPropagation(); dtSetPbbStep('bank')" class="text-left border border-[#d0d0d7] rounded-xl px-4 py-3 hover:bg-[#fafafa] transition flex items-center justify-between gap-3">
+        <span><span class="block font-bold text-[#1f1f25]">Pay in Full</span><span class="text-[#1f1f25]">£1,500.00</span></span>
+        <i class="fa-solid fa-chevron-right text-[#4d3bd8]"></i>
+      </button>
+    </div>`;
+}
+
+function dtBankGridPanel() {
+  return `
+    <div class="mt-4 ml-8 flex flex-col gap-4 max-w-[420px]">
+      <div class="flex items-center gap-2">
+        <button onclick="event.stopPropagation(); dtSetPbbStep('plan')" class="w-7 h-7 rounded-md hover:bg-[#f4f4f6] flex items-center justify-center shrink-0"><i class="fa-solid fa-chevron-left text-[#1f1f25]"></i></button>
+        <p class="font-bold text-[#1f1f25]">Select your bank</p>
+      </div>
+      <div class="grid grid-cols-5 gap-3">
+        ${BANK_ORDER.map(dtBankButton).join('')}
+      </div>
+      <p class="text-sm font-semibold text-[#4d3bd8] cursor-default select-none">See all banks</p>
+    </div>`;
+}
+
+function dtBankButton(id) {
+  const b = BANKS[id];
+  const sel = dtState.bank === id;
+  const cls = sel
+    ? 'shadow-[inset_0_0_0_2px_#4d3bd8] bg-[#f2f1ff]'
+    : 'shadow-[inset_0_0_0_1px_#d0d0d7] bg-white hover:shadow-[inset_0_0_0_1px_#4d3bd8] hover:bg-[#f8f8ff]';
+  return `
+    <button onclick="event.stopPropagation(); dtSelectBank('${id}')" class="w-14 h-14 rounded-lg ${cls} flex items-center justify-center p-2.5 transition-shadow duration-150">
+      <div class="w-full h-full rounded-md overflow-hidden bg-white shadow-[inset_0_0_0_1px_#ececef]">${bankIconInner(b)}</div>
+    </button>`;
+}
+
+function dtReviewPanel() {
+  const b = dtBank();
+  return `
+    <div class="mt-4 ml-8 flex flex-col gap-4 max-w-[420px]">
+      <div class="flex items-center gap-2">
+        <button onclick="event.stopPropagation(); dtSetPbbStep('bank')" class="w-7 h-7 rounded-md hover:bg-[#f4f4f6] flex items-center justify-center shrink-0"><i class="fa-solid fa-chevron-left text-[#1f1f25]"></i></button>
+        <p class="font-bold text-[#1f1f25]">Review</p>
+      </div>
+      <div class="flex items-center gap-3 border border-[#d0d0d7] rounded-xl px-4 py-3">
+        <div class="w-11 h-11 rounded-lg shadow-[inset_0_0_0_2px_#4d3bd8] bg-[#afadff26] flex items-center justify-center p-1.5 shrink-0">
+          <div class="w-full h-full rounded-md overflow-hidden bg-white shadow-[inset_0_0_0_1px_#ececef]">${bankIconInner(b)}</div>
+        </div>
+        <p class="flex-1 font-medium text-[#1f1f25]">${b.name}</p>
+        <button onclick="event.stopPropagation(); dtSetPbbStep('bank')" class="text-sm font-semibold text-[#4d3bd8] shrink-0">Change</button>
+      </div>
+      <p class="text-xs leading-[18px] text-[#646477]">By continuing you are permitting TrueLayer to initiate a payment from your bank account. You also agree to its <span class="text-[#4d3bd8] font-semibold underline cursor-default">Terms of Service</span> and <span class="text-[#4d3bd8] font-semibold underline cursor-default">Privacy Policy</span>.</p>
+      <button onclick="event.stopPropagation(); dtPay()" class="h-12 rounded-xl bg-[#afadff] font-bold text-[#1f1f25] flex items-center justify-center gap-2 hover:brightness-95 transition">
+        <img src="${asset('pbb-mark.svg')}" class="h-5" /> Pay with ${b.name}
+      </button>
+    </div>`;
+}
+
+function dtPbbPanel() {
+  if (dtState.pbbStep === 'bank') return dtBankGridPanel();
+  if (dtState.pbbStep === 'review') return dtReviewPanel();
+  return dtPlanPanel();
+}
+
+function buildDesktopCheckoutPage() {
+  const pbbChecked = dtState.method === 'pbb';
+  const cardChecked = dtState.method === 'card';
+  const paypalChecked = dtState.method === 'paypal';
+  return `
+    <div class="w-full max-w-5xl mx-auto grid grid-cols-[1fr_380px] gap-16 px-10 py-14">
+      <div class="flex flex-col gap-8 min-w-0">
+        <img src="${asset('logo-travelnow.svg')}" class="h-7 w-fit" />
+        <div>
+          <h1 class="text-[28px] font-bold text-[#1f1f25]">Checkout</h1>
+          <p class="text-[#646477] mt-1">Review your booking and choose how to pay.</p>
+        </div>
+        <div class="flex flex-col">
+          <h2 class="text-lg font-semibold text-[#1f1f25] mb-1">Choose how to pay</h2>
+
+          <div class="border-b border-[#ececef] py-4 cursor-pointer" onclick="dtSelectMethod('pbb')">
+            <div class="flex items-center gap-3">
+              ${dtRadio(pbbChecked)}
+              <div class="w-9 h-6 rounded bg-[#afadff] flex items-center justify-center shrink-0"><img src="${asset('pbb-mark.svg')}" class="h-3.5 w-3.5" /></div>
+              <p class="flex-1 font-semibold text-base text-[#1f1f25]">Pay by Bank</p>
+              <p class="text-sm text-[#646477]">Instant &amp; secure</p>
+            </div>
+            ${pbbChecked ? dtPbbPanel() : ''}
+          </div>
+
+          <div class="border-b border-[#ececef] py-4 cursor-pointer" onclick="dtSelectMethod('card')">
+            <div class="flex items-center gap-3">
+              ${dtRadio(cardChecked)}
+              <div class="w-9 h-6 border border-black rounded flex items-center justify-center shrink-0"><i class="fa-solid fa-credit-card text-sm"></i></div>
+              <p class="flex-1 font-semibold text-base text-[#1f1f25]">Card</p>
+              <div class="flex gap-1">${paymentIcon('visa')}${paymentIcon('mastercard')}${paymentIcon('amex')}</div>
+            </div>
+          </div>
+
+          <div class="py-4 cursor-pointer" onclick="dtSelectMethod('paypal')">
+            <div class="flex items-center gap-3">
+              ${dtRadio(paypalChecked)}
+              <div class="border border-black rounded px-[7px] py-[4px] shrink-0"><img src="${asset('paypal.svg')}" class="h-4" /></div>
+              <p class="flex-1 font-semibold text-base text-[#1f1f25]">PayPal</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="sticky top-14 border border-[#d0d0d7] rounded-2xl p-6 flex flex-col gap-5 bg-white">
+          ${dtOrderSummary()}
+        </div>
+      </div>
+    </div>`;
+}
+
+function dtMerchantDetailsRow(label, value) {
+  return `<div class="flex justify-between items-center py-[9px]"><p>${label}</p><p>${value}</p></div><div class="h-px bg-black/10"></div>`;
+}
+
+function buildDesktopBankPage() {
+  const b = dtBank();
+  if (dtState.stage === 'redirecting') {
+    return `
+      <div class="w-full max-w-sm mx-auto py-40 flex flex-col items-center gap-4 text-center">
+        <div class="w-14 h-14 rounded-full overflow-hidden bg-white shadow-sm">${bankIconInner(b)}</div>
+        <p class="text-[#646477]">Redirecting you to ${b.name}…</p>
+      </div>`;
+  }
+  return `
+    <div class="font-opensans w-full max-w-sm mx-auto py-20 flex flex-col items-center gap-6">
+      <div class="w-14 h-14 rounded-full overflow-hidden bg-white shadow-sm shrink-0">${bankIconInner(b)}</div>
+      <div class="text-center">
+        <p class="font-bold text-lg text-black">${b.name}</p>
+        <p class="font-semibold text-xl mt-3 text-black">Make a payment</p>
+        <p class="text-sm text-black/60 mt-2 leading-5">This merchant would like to make a payment from your account. Check the details, then confirm or cancel.</p>
+      </div>
+      <div class="w-full bg-white border-y border-black/10 py-1 flex flex-col text-black">
+        ${dtMerchantDetailsRow('Amount', '<span class="font-bold text-lg">£1,500.00</span>')}
+        ${dtMerchantDetailsRow('Recipient', 'Travel Now')}
+        ${dtMerchantDetailsRow('Sort code', '00-04-00')}
+        ${dtMerchantDetailsRow('Account number', '123455678')}
+        <div class="flex justify-between items-center py-[9px]"><p>Reference</p><p>123456</p></div>
+      </div>
+      <button onclick="dtConfirm()" class="w-full h-12 rounded-lg text-white font-bold text-lg" style="background:${b.color}">Confirm</button>
+      <button onclick="dtResetFlow()" class="font-bold text-lg" style="color:${b.color}">Cancel</button>
+    </div>`;
+}
+
+function buildDesktopSuccessPage() {
+  return `
+    <div class="w-full max-w-sm mx-auto py-32 flex flex-col items-center gap-5 text-center">
+      <i class="fa-solid fa-circle-check text-[#f33b92] text-6xl"></i>
+      <div>
+        <p class="font-semibold text-2xl text-[#1f1f25]">Payment successful</p>
+        <p class="text-[#1f1f25] mt-1">Your booking is complete.</p>
+        <p class="text-[#646477] mt-2">(ref. 123456)</p>
+      </div>
+      <button onclick="dtResetFlow()" class="h-11 px-6 rounded-xl bg-[#f33b92] text-white font-bold hover:brightness-95 transition">Done</button>
+    </div>`;
+}
+
+function renderDesktopCheckout() {
+  const el = document.getElementById('desktopStage');
+  if (dtState.stage === 'success') { el.innerHTML = buildDesktopSuccessPage(); return; }
+  if (dtState.stage === 'redirecting' || dtState.stage === 'bankconfirm') { el.innerHTML = buildDesktopBankPage(); return; }
+  el.innerHTML = buildDesktopCheckoutPage();
+}
+
+function dtSelectMethod(method) {
+  dtState.method = method;
+  if (method === 'pbb') dtState.pbbStep = 'plan';
+  renderDesktopCheckout();
+}
+function dtSetPbbStep(step) { dtState.pbbStep = step; renderDesktopCheckout(); }
+function dtSelectBank(id) { dtState.bank = id; dtState.pbbStep = 'review'; renderDesktopCheckout(); }
+
+function dtPay() {
+  if (dtAutoTimer) clearTimeout(dtAutoTimer);
+  dtState.stage = 'redirecting';
+  renderDesktopCheckout();
+  dtAutoTimer = setTimeout(() => { dtState.stage = 'bankconfirm'; renderDesktopCheckout(); }, 1200);
+}
+function dtConfirm() { dtState.stage = 'success'; renderDesktopCheckout(); }
+
+function dtResetFlow() {
+  if (dtAutoTimer) { clearTimeout(dtAutoTimer); dtAutoTimer = null; }
+  dtState.method = null;
+  dtState.pbbStep = 'plan';
+  dtState.bank = null;
+  dtState.stage = 'checkout';
+  renderDesktopCheckout();
+}
+
+function restartAll() { resetFlow(); dtResetFlow(); }
+
+// ---------------------------------------------------------------------------
+// View mode — responsive by default (desktop checkout above the breakpoint,
+// the phone-framed mobile flow below it), with a manual override button.
+// `viewModeOverride` is null while following the viewport; once toggled, it
+// sticks with whatever was chosen regardless of resizing.
+// ---------------------------------------------------------------------------
+const desktopBreakpoint = window.matchMedia('(min-width: 900px)');
+let viewModeOverride = null;
+
+function effectiveViewMode() {
+  return viewModeOverride || (desktopBreakpoint.matches ? 'desktop' : 'mobile');
+}
+
+function applyViewMode() {
+  const mode = effectiveViewMode();
+  document.getElementById('stage').className = `mode-${mode} flex-1 w-full flex items-center justify-center`;
+  const label = document.getElementById('viewModeLabel');
+  const icon = document.querySelector('#viewModeToggle i');
+  if (mode === 'desktop') {
+    label.textContent = 'Switch to mobile';
+    icon.className = 'fa-solid fa-mobile-screen-button';
+    renderDesktopCheckout();
+  } else {
+    label.textContent = 'Switch to desktop';
+    icon.className = 'fa-solid fa-desktop';
+  }
+}
+
+function toggleViewMode() {
+  viewModeOverride = effectiveViewMode() === 'desktop' ? 'mobile' : 'desktop';
+  applyViewMode();
+}
+
+desktopBreakpoint.addEventListener('change', () => {
+  if (viewModeOverride === null) applyViewMode();
+});
+
+// ---------------------------------------------------------------------------
 // Animation tuner — a small on-page panel for live-adjusting every duration/
 // easing in TUNING. Every animation function above reads TUNING fresh each
 // time it runs, so a slider change takes effect on the very next transition
@@ -978,8 +1283,12 @@ async function previewTuning() {
   // The animation tuner is a dev/demo-building tool, not part of the demo
   // itself — only surface its toggle when explicitly requested via ?tuner.
   if (params.has('tuner')) document.getElementById('tunerToggle').classList.remove('hidden');
+
+  const view = params.get('view');
+  if (view === 'mobile' || view === 'desktop') viewModeOverride = view;
 })();
 renderTransition();
+applyViewMode();
 
 // Press "R" to restart the demo — plain keypress only, so Cmd/Ctrl+R still
 // reloads the page as usual instead of being hijacked.
