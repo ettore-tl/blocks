@@ -333,7 +333,7 @@ function pbbBoxContent(step) {
   if (step === 'pbb') {
     return `
       <div class="mt-3 flex flex-col gap-2 w-full">
-        <div class="border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-2 cursor-pointer hover:bg-[#fafafa]" onclick="goto('bankselect')">
+        <div class="shadow-[inset_0_0_0_1px_#d0d0d7] hover:shadow-[inset_0_0_0_2px_#4d3bd8] hover:bg-[#f2f1ff] rounded-xl px-4 py-3 flex flex-col gap-2 cursor-pointer transition-colors duration-150" onclick="goto('bankselect')">
           <div class="flex items-center gap-2 w-full">
             <p class="flex-1 font-bold text-base text-[#060606]">Pay in Full</p>
             <i class="fa-solid fa-chevron-right text-[#4d3bd8] text-sm"></i>
@@ -1078,7 +1078,7 @@ function buildDesktopCheckoutPage() {
         </div>
       </div>
 
-      <div class="w-full max-w-5xl mx-auto grid grid-cols-[400px_400px] gap-16 px-10 py-14">
+      <div class="w-full max-w-5xl mx-auto grid grid-cols-[400px_1px_400px] gap-8 px-10 py-14">
         <div class="flex flex-col gap-4 min-w-0">
           <div>
             <p class="font-semibold text-xl text-[#060606]">Checkout</p>
@@ -1088,6 +1088,8 @@ function buildDesktopCheckoutPage() {
             ${dtOrderSummary()}
           </div>
         </div>
+
+        <div class="w-px bg-[#ececef]"></div>
 
         <div class="flex flex-col gap-4 min-w-0">
           <p class="font-semibold text-xl text-[#060606]">Choose how to pay</p>
@@ -1158,7 +1160,6 @@ function dtQrModalHTML() {
     <div id="dtQrOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" style="opacity:0" onclick="dtCancelQr(event)">
       <div class="relative bg-white rounded-2xl shadow-2xl p-8 w-[360px] flex flex-col items-center gap-5 text-center" onclick="event.stopPropagation()">
         <button onclick="dtCancelQr(event)" class="absolute top-4 right-4 w-7 h-7 rounded-md hover:bg-[#f4f4f6] flex items-center justify-center"><i class="fa-solid fa-xmark text-[#646477]"></i></button>
-        <div class="w-11 h-11 rounded-lg overflow-hidden shadow-[inset_0_0_0_1px_#ececef]">${bankIconInner(b)}</div>
         <div>
           <p class="font-bold text-lg text-[#060606]">Open the ${b.name} app</p>
           <p class="text-sm text-[#646477] mt-1">Scan this QR code with your phone's camera to approve the £1,500.00 payment.</p>
