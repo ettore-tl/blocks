@@ -878,7 +878,9 @@ const dtState = {
   selectedMethod: null, // null | 'pbb' | 'card' | 'paypal'
   selectedBank: null,
   step: 'method',    // 'method' | 'pbb' | 'bankselect' | 'review' — mirrors mobile's `state.step`
-  stage: 'checkout', // 'checkout' | 'redirecting' | 'bankconfirm' | 'success' — which page is mounted
+  stage: 'checkout', // 'checkout' | 'success' — which page is mounted
+  qrOpen: false,     // desktop pays by "scanning" a QR modal instead of a redirect — mobile is unaffected
+  qrLoading: false,
 };
 let dtAutoTimer = null;
 // Tracks which page is currently in #desktopStage, mirroring mobile's
@@ -997,7 +999,7 @@ function dtSubShellBody(step) {
   if (step === 'bankselect') {
     return `
       <div class="flex flex-col gap-4 w-full items-center">
-        <div class="flex flex-wrap gap-4 w-full">
+        <div class="flex flex-wrap justify-center gap-4 w-full">
           ${BANK_ORDER.map(id => dtBankGridButton(id)).join('')}
         </div>
         <p class="mb-2 text-[#4d3bd8] text-sm font-semibold text-center cursor-default select-none">See all banks</p>
@@ -1076,7 +1078,7 @@ function buildDesktopCheckoutPage() {
         </div>
       </div>
 
-      <div class="w-full max-w-5xl mx-auto grid grid-cols-[1fr_400px] gap-16 px-10 py-14">
+      <div class="w-full max-w-5xl mx-auto grid grid-cols-[400px_400px] gap-16 px-10 py-14">
         <div class="flex flex-col gap-4 min-w-0">
           <div>
             <p class="font-semibold text-xl text-[#060606]">Checkout</p>
@@ -1098,40 +1100,117 @@ function buildDesktopCheckoutPage() {
           </div>
         </div>
       </div>
+
+      <div id="dtQrModal"></div>
     </div>`;
 }
 
-function dtMerchantDetailsRow(label, value) {
-  return `<div class="flex justify-between items-center py-[9px]"><p>${label}</p><p>${value}</p></div><div class="h-px bg-black/10"></div>`;
-}
-
-function buildDesktopBankPage() {
-  const b = dtBank();
-  if (dtState.stage === 'redirecting') {
-    return `
-      <div class="w-full max-w-sm mx-auto py-40 flex flex-col items-center gap-4 text-center">
-        <div class="w-14 h-14 rounded-full overflow-hidden bg-white shadow-sm">${bankIconInner(b)}</div>
-        <p class="text-[#646477]">Redirecting you to ${b.name}…</p>
-      </div>`;
+// ---------------------------------------------------------------------------
+// Desktop-only "scan to pay" modal — on the web there's no single phone app
+// to redirect to, so instead of mobile's redirect+bank-hosted-page flow,
+// paying opens a QR code you'd scan with your banking app. Clicking the QR
+// itself simulates that scan (there's no real phone camera here to trigger
+// it) and shows a brief loading state before landing on success.
+// ---------------------------------------------------------------------------
+function fakeQrSvg() {
+  const N = 21, cell = 8, size = N * cell; // a plausible QR module grid, not a real scannable code
+  const finders = [[0, 0], [N - 7, 0], [0, N - 7]];
+  const c0 = Math.floor(N / 2) - 2, c1 = c0 + 5; // blank center reserved for the bank logo overlay
+  const inFinder = (x, y) => finders.some(([fx, fy]) => x >= fx && x < fx + 7 && y >= fy && y < fy + 7);
+  const inCenter = (x, y) => x >= c0 && x < c1 && y >= c0 && y < c1;
+  let modules = '';
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      if (inFinder(x, y) || inCenter(x, y)) continue;
+      if (Math.random() < 0.42) modules += `<rect x="${x * cell}" y="${y * cell}" width="${cell}" height="${cell}" fill="#1f1f25"/>`;
+    }
   }
+  const finderSvg = (fx, fy) => {
+    const X = fx * cell, Y = fy * cell, S = 7 * cell;
+    return `<rect x="${X}" y="${Y}" width="${S}" height="${S}" fill="#1f1f25"/>
+      <rect x="${X + cell}" y="${Y + cell}" width="${S - 2 * cell}" height="${S - 2 * cell}" fill="#ffffff"/>
+      <rect x="${X + 2 * cell}" y="${Y + 2 * cell}" width="${S - 4 * cell}" height="${S - 4 * cell}" fill="#1f1f25"/>`;
+  };
+  return `<svg viewBox="0 0 ${size} ${size}" class="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
+      <rect width="${size}" height="${size}" fill="#ffffff"/>
+      ${finders.map(([fx, fy]) => finderSvg(fx, fy)).join('')}
+      ${modules}
+    </svg>`;
+}
+
+function dtQrCodeBody() {
+  if (dtState.qrLoading) {
+    return `<div class="absolute inset-0 flex items-center justify-center bg-white"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-[#4d3bd8]"></i></div>`;
+  }
+  const b = dtBank();
   return `
-    <div class="font-opensans w-full max-w-sm mx-auto py-20 flex flex-col items-center gap-6">
-      <div class="w-14 h-14 rounded-full overflow-hidden bg-white shadow-sm shrink-0">${bankIconInner(b)}</div>
-      <div class="text-center">
-        <p class="font-bold text-lg text-black">${b.name}</p>
-        <p class="font-semibold text-xl mt-3 text-black">Make a payment</p>
-        <p class="text-sm text-black/60 mt-2 leading-5">This merchant would like to make a payment from your account. Check the details, then confirm or cancel.</p>
+    ${fakeQrSvg()}
+    <div class="absolute inset-0 flex items-center justify-center">
+      <div class="w-14 h-14 rounded-xl bg-white shadow-[0_0_0_4px_#ffffff] flex items-center justify-center p-2">
+        <div class="w-full h-full rounded-md overflow-hidden shadow-[inset_0_0_0_1px_#ececef]">${bankIconInner(b)}</div>
       </div>
-      <div class="w-full bg-white border-y border-black/10 py-1 flex flex-col text-black">
-        ${dtMerchantDetailsRow('Amount', '<span class="font-bold text-lg">£1,500.00</span>')}
-        ${dtMerchantDetailsRow('Recipient', 'Travel Now')}
-        ${dtMerchantDetailsRow('Sort code', '00-04-00')}
-        ${dtMerchantDetailsRow('Account number', '123455678')}
-        <div class="flex justify-between items-center py-[9px]"><p>Reference</p><p>123456</p></div>
-      </div>
-      <button onclick="dtConfirm()" class="w-full h-12 rounded-lg text-white font-bold text-lg" style="background:${b.color}">Confirm</button>
-      <button onclick="dtResetFlow()" class="font-bold text-lg" style="color:${b.color}">Cancel</button>
     </div>`;
+}
+
+function dtQrModalHTML() {
+  const b = dtBank();
+  return `
+    <div id="dtQrOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" style="opacity:0" onclick="dtCancelQr(event)">
+      <div class="relative bg-white rounded-2xl shadow-2xl p-8 w-[360px] flex flex-col items-center gap-5 text-center" onclick="event.stopPropagation()">
+        <button onclick="dtCancelQr(event)" class="absolute top-4 right-4 w-7 h-7 rounded-md hover:bg-[#f4f4f6] flex items-center justify-center"><i class="fa-solid fa-xmark text-[#646477]"></i></button>
+        <div class="w-11 h-11 rounded-lg overflow-hidden shadow-[inset_0_0_0_1px_#ececef]">${bankIconInner(b)}</div>
+        <div>
+          <p class="font-bold text-lg text-[#060606]">Open the ${b.name} app</p>
+          <p class="text-sm text-[#646477] mt-1">Scan this QR code with your phone's camera to approve the £1,500.00 payment.</p>
+        </div>
+        <div id="dtQrCode" class="relative w-[200px] h-[200px] rounded-xl overflow-hidden cursor-pointer shadow-[inset_0_0_0_1px_#ececef]" onclick="dtSimulateScan()">
+          ${dtQrCodeBody()}
+        </div>
+        <p id="dtQrHint" class="text-xs text-[#9090a2]">${dtState.qrLoading ? 'Waiting for confirmation…' : "Click the QR code to simulate scanning it"}</p>
+      </div>
+    </div>`;
+}
+
+function dtOpenQrModal() {
+  const container = document.getElementById('dtQrModal');
+  if (!container) return;
+  container.innerHTML = dtQrModalHTML();
+  const overlay = document.getElementById('dtQrOverlay');
+  requestAnimationFrame(() => {
+    overlay.style.transition = 'opacity 180ms ease-out';
+    overlay.style.opacity = '1';
+  });
+}
+
+function dtCancelQr(event) {
+  if (event) event.stopPropagation();
+  if (dtState.qrLoading) return; // a "scan" is in flight — nothing to cancel back out of
+  if (dtAutoTimer) { clearTimeout(dtAutoTimer); dtAutoTimer = null; }
+  dtState.qrOpen = false;
+  const overlay = document.getElementById('dtQrOverlay');
+  if (!overlay) return;
+  overlay.style.transition = 'opacity 150ms ease-in';
+  overlay.style.opacity = '0';
+  setTimeout(() => {
+    const container = document.getElementById('dtQrModal');
+    if (container) container.innerHTML = '';
+  }, 150);
+}
+
+function dtSimulateScan() {
+  if (dtState.qrLoading) return;
+  dtState.qrLoading = true;
+  const codeEl = document.getElementById('dtQrCode');
+  const hintEl = document.getElementById('dtQrHint');
+  if (codeEl) codeEl.innerHTML = dtQrCodeBody();
+  if (hintEl) hintEl.textContent = 'Waiting for confirmation…';
+  if (dtAutoTimer) clearTimeout(dtAutoTimer);
+  dtAutoTimer = setTimeout(() => {
+    dtState.qrOpen = false;
+    dtState.qrLoading = false;
+    dtState.stage = 'success';
+    dtRenderTransition(); // fades the whole checkout page (modal included) out, success in
+  }, 1400);
 }
 
 function buildDesktopSuccessPage() {
@@ -1149,7 +1228,6 @@ function buildDesktopSuccessPage() {
 
 function dtBuildPageHTML(page) {
   if (page === 'success') return buildDesktopSuccessPage();
-  if (page === 'redirecting' || page === 'bankconfirm') return buildDesktopBankPage();
   return buildDesktopCheckoutPage();
 }
 
@@ -1272,12 +1350,10 @@ function dtBackToBankSelect() {
 }
 
 function dtPay() {
-  if (dtAutoTimer) clearTimeout(dtAutoTimer);
-  dtState.stage = 'redirecting';
-  dtRenderTransition();
-  dtAutoTimer = setTimeout(() => { dtState.stage = 'bankconfirm'; dtRenderTransition(); }, 1200);
+  dtState.qrOpen = true;
+  dtState.qrLoading = false;
+  dtOpenQrModal();
 }
-function dtConfirm() { dtState.stage = 'success'; dtRenderTransition(); }
 
 function dtResetFlow() {
   if (dtAutoTimer) { clearTimeout(dtAutoTimer); dtAutoTimer = null; }
@@ -1285,6 +1361,8 @@ function dtResetFlow() {
   dtState.selectedBank = null;
   dtState.step = 'method';
   dtState.stage = 'checkout';
+  dtState.qrOpen = false;
+  dtState.qrLoading = false;
   dtMountedPage = null; // force a full, fresh remount
   dtRenderTransition();
 }
