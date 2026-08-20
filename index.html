@@ -57,6 +57,47 @@
   .iphone-btn-vol-down { left: 0px;  top: 240px; width: 3px; height: 58px; border-radius: 2px 0 0 2px; }
   .iphone-btn-power    { right: 0px; top: 195px; width: 3px; height: 92px; border-radius: 0 2px 2px 0;
                           background: linear-gradient(270deg, #48484a, #1c1c1e); box-shadow: 1px 0 1px rgba(0, 0, 0, 0.4); }
+
+  /* --- Layout modes — #stage is the one thing that switches between the
+     phone-framed mobile view and the frameless 2-column desktop view. The
+     390x844 checkout content itself (#phone) never changes; only its
+     surrounding chrome and neighboring column do. --- */
+  #stage.mode-mobile {
+    display: flex;
+    justify-content: center;
+  }
+  #stage.mode-mobile #desktopLeftPanel { display: none; }
+
+  #stage.mode-desktop {
+    display: grid;
+    grid-template-columns: 1fr 390px;
+    align-items: center;
+    gap: 64px;
+    width: 100%;
+    max-width: 1080px;
+    padding: 0 40px;
+    box-sizing: border-box;
+  }
+  #stage.mode-desktop #desktopLeftPanel { display: flex; }
+  /* Desktop drops the phone bezel entirely — same #phone content, presented
+     as a plain card instead of an iPhone. Fixed 390x844 so nothing inside
+     the screens (all absolutely positioned against that exact size) needs
+     to change for this view. */
+  #stage.mode-desktop .iphone-mockup {
+    width: 390px;
+    height: 844px;
+    padding: 0;
+    background: none;
+    border-radius: 20px;
+    box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  }
+  #stage.mode-desktop .iphone-island,
+  #stage.mode-desktop .iphone-btn {
+    display: none;
+  }
+  #stage.mode-desktop #phone {
+    border-radius: 20px;
+  }
 </style>
 </head>
 <body class="min-h-screen bg-[#eef0f3] flex flex-col items-center justify-center gap-5 py-10">
@@ -66,15 +107,51 @@
     <button onclick="resetFlow()" class="text-xs font-semibold text-[#4d3bd8] flex items-center gap-1 hover:text-[#3a2ca8] transition">
       <i class="fa-solid fa-rotate-left"></i> Restart
     </button>
+    <button id="viewModeToggle" onclick="toggleViewMode()" class="text-xs font-semibold text-[#4d3bd8] flex items-center gap-1 hover:text-[#3a2ca8] transition">
+      <i class="fa-solid fa-desktop"></i> <span id="viewModeLabel">Switch to desktop</span>
+    </button>
   </div>
 
-  <div class="iphone-mockup shrink-0">
-    <div class="iphone-island"></div>
-    <span class="iphone-btn iphone-btn-mute"></span>
-    <span class="iphone-btn iphone-btn-vol-up"></span>
-    <span class="iphone-btn iphone-btn-vol-down"></span>
-    <span class="iphone-btn iphone-btn-power"></span>
-    <div id="phone" class="w-full h-full rounded-[42px] overflow-y-auto overflow-x-hidden bg-white"></div>
+  <div id="stage" class="mode-mobile">
+    <!-- Desktop-only companion column — purely decorative context (the
+         booking someone's paying for); the interactive flow itself is
+         entirely unchanged in #phone. Hidden outright on mobile. -->
+    <div id="desktopLeftPanel" class="hidden flex-col gap-6 max-w-[440px]">
+      <img src="assets/logo-travelnow.svg" class="h-8 w-fit" />
+      <div class="rounded-2xl overflow-hidden shadow-xl">
+        <img src="assets/hotel.png" class="w-full h-[320px] object-cover" />
+      </div>
+      <div>
+        <h1 class="text-3xl font-bold text-[#1f1f25]">Royal cabin Kyoto</h1>
+        <div class="flex flex-col gap-1 mt-2 text-[#646477]">
+          <p><i class="fa-solid fa-location-dot text-[#1f1f25] w-4"></i> Nagyo Ward, Kyoto, Japan</p>
+          <p><i class="fa-solid fa-star text-[#f33b92] w-4"></i> 4,8 · 64 reviews</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-4 border-t border-[#d0d0d7] pt-5">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-[#646477]">Dates</p>
+          <p class="font-bold text-[#1f1f25] mt-1">5-9 Sept 2026</p>
+        </div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-[#646477]">Guests</p>
+          <p class="font-bold text-[#1f1f25] mt-1">2 adults</p>
+        </div>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-[#646477]">Total</p>
+          <p class="font-bold text-[#1f1f25] mt-1">£1,500.00</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="iphone-mockup shrink-0">
+      <div class="iphone-island"></div>
+      <span class="iphone-btn iphone-btn-mute"></span>
+      <span class="iphone-btn iphone-btn-vol-up"></span>
+      <span class="iphone-btn iphone-btn-vol-down"></span>
+      <span class="iphone-btn iphone-btn-power"></span>
+      <div id="phone" class="w-full h-full rounded-[42px] overflow-y-auto overflow-x-hidden bg-white"></div>
+    </div>
   </div>
 
   <button id="tunerToggle" onclick="toggleTuner()" class="hidden fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-[#1f1f25] text-white shadow-xl flex items-center justify-center text-2xl hover:scale-105 transition" title="Animation tuner">
@@ -133,6 +210,7 @@ function stepBackground(step) {
 const state = { step: 'method', selectedMethod: null, selectedBank: null };
 let autoTimer = null;
 let mountedGroup = null;
+let viewModeOverride = null; // null = follow viewport width; 'mobile'/'desktop' = manually forced
 
 // ---------------------------------------------------------------------------
 // Animation tuning — every duration/easing below is read live from this
@@ -846,6 +924,44 @@ function resetFlow() {
 }
 
 // ---------------------------------------------------------------------------
+// View mode — responsive by default (desktop 2-column layout above the
+// breakpoint, the phone-framed mobile layout below it), with a manual
+// override button. `viewModeOverride` is null while following the viewport;
+// once toggled, it sticks with whatever was chosen regardless of resizing.
+// ---------------------------------------------------------------------------
+const desktopBreakpoint = window.matchMedia('(min-width: 900px)');
+
+function effectiveViewMode() {
+  return viewModeOverride || (desktopBreakpoint.matches ? 'desktop' : 'mobile');
+}
+
+function applyViewMode() {
+  const mode = effectiveViewMode();
+  document.getElementById('stage').className = `mode-${mode}`;
+  const label = document.getElementById('viewModeLabel');
+  const icon = document.querySelector('#viewModeToggle i');
+  if (mode === 'desktop') {
+    label.textContent = 'Switch to mobile';
+    icon.className = 'fa-solid fa-mobile-screen-button';
+  } else {
+    label.textContent = 'Switch to desktop';
+    icon.className = 'fa-solid fa-desktop';
+  }
+}
+
+function toggleViewMode() {
+  viewModeOverride = effectiveViewMode() === 'desktop' ? 'mobile' : 'desktop';
+  applyViewMode();
+}
+
+// Only auto-react to window resizing while the user hasn't manually forced
+// a mode — an explicit toggle should stick, not get silently overridden the
+// next time the window crosses the breakpoint.
+desktopBreakpoint.addEventListener('change', () => {
+  if (viewModeOverride === null) applyViewMode();
+});
+
+// ---------------------------------------------------------------------------
 // Animation tuner — a small on-page panel for live-adjusting every duration/
 // easing in TUNING. Every animation function above reads TUNING fresh each
 // time it runs, so a slider change takes effect on the very next transition
@@ -978,8 +1094,12 @@ async function previewTuning() {
   // The animation tuner is a dev/demo-building tool, not part of the demo
   // itself — only surface its toggle when explicitly requested via ?tuner.
   if (params.has('tuner')) document.getElementById('tunerToggle').classList.remove('hidden');
+
+  const viewParam = params.get('view');
+  if (viewParam === 'mobile' || viewParam === 'desktop') viewModeOverride = viewParam;
 })();
 renderTransition();
+applyViewMode();
 
 // Press "R" to restart the demo — plain keypress only, so Cmd/Ctrl+R still
 // reloads the page as usual instead of being hijacked.
