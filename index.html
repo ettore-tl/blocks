@@ -666,8 +666,13 @@ function updatePbbVariable(prevStep) {
 // ---------------------------------------------------------------------------
 function buildGroupB() {
   const b = currentBank();
+  // Shared by both the payment flow's 'login' step and Credit's own
+  // 'creditlogin' step — tapping early (before the auto-advance timer)
+  // must land on whichever screen actually follows the current step, not
+  // always the payment flow's bank-hosted 'Make a payment' page.
+  const next = state.step === 'creditlogin' ? 'creditconsent' : 'bankreview';
   return `
-    <div class="absolute top-0 left-0 w-full min-h-full flex flex-col items-center justify-center cursor-pointer" style="background:${b.color}" onclick="goto('bankreview')">
+    <div class="absolute top-0 left-0 w-full min-h-full flex flex-col items-center justify-center cursor-pointer" style="background:${b.color}" onclick="goto('${next}')">
       <div class="absolute top-[59px] left-1/2 -translate-x-1/2">
         <div class="w-[150px] h-[150px] bg-black rounded-[42px] shadow-2xl flex items-center justify-center">
           <div class="w-[95px] h-[96px] rounded-[17px] overflow-hidden relative">
@@ -810,8 +815,10 @@ function creditStepperSegments(filled, total) {
 function creditHeader(filled, backOnclick) {
   // Same pt-12 clearance as bankMerchantBody() — the iPhone mockup's own
   // Dynamic Island sits over the top of the screen, not drawn by the app.
+  // Filled white (not bg-inherit) so it reads as a distinct bar above the
+  // page's grey content, matching desktop's dtCreditHeader.
   return `
-    <div class="flex flex-col gap-4 px-4 pt-12 pb-3 sticky top-0 bg-inherit z-10">
+    <div class="flex flex-col gap-4 px-4 pt-12 pb-3 sticky top-0 bg-white border-b border-[#ececef] z-10">
       <div class="flex items-center justify-between">
         <button onclick="${backOnclick}" class="w-7 h-7 rounded-md hover:bg-black/5 flex items-center justify-center shrink-0"><i class="fa-solid fa-chevron-left text-[#060606]"></i></button>
         <div class="flex items-center gap-1.5 text-[#646477] text-sm font-medium"><i class="fa-solid fa-lock text-xs"></i>Secure connection</div>
@@ -903,10 +910,6 @@ function buildCreditFinancesScreen() {
           <div class="flex flex-col">${creditYesNoOptions()}</div>
         </div>
         <div class="flex flex-col gap-3 items-center mt-1">
-          <div class="flex items-center gap-2">
-            <img src="${asset('direct-debit-logo.png')}" class="h-5 w-5 object-contain shrink-0" />
-            <p class="text-xs text-[#646477]">Repayments collected by Direct Debit</p>
-          </div>
           <p class="text-xs text-[#646477]">Secured by TrueLayer</p>
           <p class="text-sm text-[#646477] text-center">This won't affect your credit score.</p>
           <button onclick="goto('creditplan')" class="w-full h-12 rounded-xl bg-[#afadff] font-bold text-base text-[#060606] flex items-center justify-center gap-2 hover:brightness-95 transition"><img src="${asset('icon-check-eligibility.svg')}" class="h-4 w-4" /> Check eligibility</button>
@@ -1865,10 +1868,6 @@ function buildDesktopCreditFinancesPage() {
           <div class="flex flex-col">${dtCreditYesNoOptions()}</div>
         </div>
         <div class="flex flex-col gap-3 items-center mt-1">
-          <div class="flex items-center gap-2">
-            <img src="${asset('direct-debit-logo.png')}" class="h-5 w-5 object-contain shrink-0" />
-            <p class="text-xs text-[#646477]">Repayments collected by Direct Debit</p>
-          </div>
           <p class="text-xs text-[#646477]">Secured by TrueLayer</p>
           <p class="text-sm text-[#646477] text-center">This won't affect your credit score.</p>
           <button onclick="dtGotoStage('creditplan')" class="w-full h-12 rounded-xl bg-[#afadff] font-bold text-base text-[#060606] flex items-center justify-center gap-2 hover:brightness-95 transition"><img src="${asset('icon-check-eligibility.svg')}" class="h-4 w-4" /> Check eligibility</button>
