@@ -150,6 +150,9 @@ const STEP_BG = {
   // the merchant's white checkout card — they sit on a light grey page
   // background with white cards on top, like the bank-hosted PIS pages do.
   creditfinances: '#f4f4f6', creditplan: '#f4f4f6', creditagreement: '#f4f4f6',
+  // The account-access consent screen is bank-hosted, same treatment as
+  // bankreview/bankauth above.
+  creditconsent: '#f7f7f7',
 };
 // 'login'/'creditlogin' aren't in the static map above — they're the
 // selected bank's own brand color, since that screen is meant to look like
@@ -188,6 +191,7 @@ function groupOf(step) {
   if (['bankreview', 'bankauth'].includes(step)) return 'C';
   if (step === 'login' || step === 'creditlogin') return 'B';
   if (['creditfinances', 'creditplan', 'creditagreement'].includes(step)) return 'E';
+  if (step === 'creditconsent') return 'F';
   return 'D';
 }
 
@@ -381,7 +385,9 @@ function pbbBoxContent(step) {
 const SUBSHELL_STEPS = new Set(['bankselect', 'review', 'creditbankselect', 'creditreview']);
 
 function subShellTitle(step) {
-  return (step === 'bankselect' || step === 'creditbankselect') ? 'Select your bank' : 'Review';
+  // Credit's title stays 'Select your bank' even once a bank is picked —
+  // unlike the payment flow, the design never relabels it to 'Review'.
+  return step === 'review' ? 'Review' : 'Select your bank';
 }
 
 function subShellBackOnclick(step) {
@@ -389,16 +395,23 @@ function subShellBackOnclick(step) {
   return step === 'creditreview' ? 'creditBackToBankSelect()' : 'backToBankSelect()';
 }
 
+// Shared by both creditbankselect and creditreview — the design keeps this
+// info card visible even after a bank's been picked, not just while
+// choosing one.
+function creditShareInfoCard() {
+  return `
+    <div class="bg-[#f4f4f6] rounded-lg px-3 py-2 flex items-center gap-3 w-full">
+      <div class="flex-1">
+        <p class="font-semibold text-sm text-[#060606]">Share your bank account details.</p>
+        <p class="text-sm text-[#646477]">No impact on your credit score.</p>
+      </div>
+      <i class="fa-solid fa-circle-info text-[#4d3bd8]"></i>
+    </div>`;
+}
+
 function subShellBody(step) {
   if (step === 'bankselect' || step === 'creditbankselect') {
-    const creditInfo = step === 'creditbankselect' ? `
-      <div class="bg-[#f4f4f6] rounded-lg px-3 py-2 flex items-center gap-3 w-full">
-        <div class="flex-1">
-          <p class="font-semibold text-sm text-[#060606]">Share your bank account details.</p>
-          <p class="text-sm text-[#646477]">No impact on your credit score.</p>
-        </div>
-        <i class="fa-solid fa-circle-info text-[#4d3bd8]"></i>
-      </div>` : '';
+    const creditInfo = step === 'creditbankselect' ? creditShareInfoCard() : '';
     return `
       <div class="flex flex-col gap-4 w-full items-center">
         ${creditInfo}
@@ -416,6 +429,7 @@ function subShellBody(step) {
     : `<p class="text-[11px] leading-[18px] text-[#40404c]">By continuing you are permitting TrueLayer to initiate a payment from your bank account. You also agree to its <span class="text-[#4d3bd8] font-semibold underline cursor-default">Terms of Service</span> and <span class="text-[#4d3bd8] font-semibold underline cursor-default">Privacy Policy</span>.</p>`;
   return `
     <div class="flex flex-col gap-4 w-full">
+      ${isCredit ? creditShareInfoCard() : ''}
       <div class="flex items-center gap-4 w-full">
         <div class="w-12 h-12 rounded-lg shadow-[inset_0_0_0_2px_#4d3bd8] bg-[#afadff26] flex items-center justify-center p-2 shrink-0">
           <div class="w-8 h-8 rounded-md overflow-hidden bg-white shadow-[inset_0_0_0_1px_#ececef]">${bankIconInner(b)}</div>
@@ -429,13 +443,18 @@ function subShellBody(step) {
 
 function subShellContent(step) {
   const isCredit = step === 'creditbankselect' || step === 'creditreview';
+  // Credit's price row has no amount to show yet — just the label, not
+  // paired with '£1,500.00' the way 'Pay in Full' is.
+  const priceRow = isCredit
+    ? `<p class="font-medium text-base text-[#060606]">Apply for Credit</p>`
+    : `<div class="flex justify-between font-medium text-base text-[#060606]"><p>Pay in Full</p><p>£1,500.00</p></div>`;
   return `
     <div class="mt-3 border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-4 w-full">
       <div class="flex items-center gap-2">
         <button id="subBack" onclick="${subShellBackOnclick(step)}" class="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[#f4f4f6] shrink-0"><i class="fa-solid fa-chevron-left text-[#060606]"></i></button>
         <p id="subTitle" class="font-bold text-base text-[#060606] overflow-hidden">${subShellTitle(step)}</p>
       </div>
-      <div class="flex justify-between font-medium text-base text-[#060606]"><p>${isCredit ? 'Apply for Credit' : 'Pay in Full'}</p><p>£1,500.00</p></div>
+      ${priceRow}
       ${separator()}
       <div id="subBody" class="w-full overflow-hidden">${subShellBody(step)}</div>
     </div>`;
@@ -445,7 +464,7 @@ function pbbButtonContent(step) {
   if (step === 'creditreview') {
     return `
     <button onclick="goto('creditlogin')" class="mt-4 w-full h-12 rounded-xl bg-[#afadff] flex items-center justify-center gap-2 font-bold text-base text-[#060606] hover:brightness-95 transition">
-      <i class="fa-solid fa-user text-sm"></i> Check eligibility
+      <img src="${asset('icon-check-eligibility.svg')}" class="h-4 w-4" /> Check eligibility
     </button>`;
   }
   if (step !== 'review') return '';
@@ -814,6 +833,13 @@ function radioCirclePurple(selected) {
     : `<div class="w-5 h-5 rounded-full border border-[#4d3bd8] shrink-0 mt-0.5"></div>`;
 }
 
+// The real Direct Debit Guarantee logo mark — a genuine downloaded asset
+// (assets/direct-debit-logo.png), not an approximated icon.
+function directDebitLogoBox(size) {
+  size = size || 32;
+  return `<div class="border border-[#ececef] rounded-lg overflow-hidden shrink-0 bg-white flex items-center justify-center" style="width:${size}px;height:${size}px;"><img src="${asset('direct-debit-logo.png')}" class="w-full h-full object-contain p-1" /></div>`;
+}
+
 function creditSelectField(label, value) {
   return `
     <div class="flex flex-col gap-2 w-full">
@@ -876,9 +902,14 @@ function buildCreditFinancesScreen() {
           <p class="font-semibold text-base text-[#060606]">Do you expect any changes in the next 12 months that could make it harder to make repayments?</p>
           <div class="flex flex-col">${creditYesNoOptions()}</div>
         </div>
-        <div class="flex flex-col gap-4 items-center mt-1">
+        <div class="flex flex-col gap-3 items-center mt-1">
+          <div class="flex items-center gap-2">
+            <img src="${asset('direct-debit-logo.png')}" class="h-5 w-5 object-contain shrink-0" />
+            <p class="text-xs text-[#646477]">Repayments collected by Direct Debit</p>
+          </div>
+          <p class="text-xs text-[#646477]">Secured by TrueLayer</p>
           <p class="text-sm text-[#646477] text-center">This won't affect your credit score.</p>
-          <button onclick="goto('creditplan')" class="w-full h-12 rounded-xl bg-[#afadff] font-bold text-base text-[#060606] flex items-center justify-center gap-2 hover:brightness-95 transition"><i class="fa-solid fa-user text-sm"></i> Check eligibility</button>
+          <button onclick="goto('creditplan')" class="w-full h-12 rounded-xl bg-[#afadff] font-bold text-base text-[#060606] flex items-center justify-center gap-2 hover:brightness-95 transition"><img src="${asset('icon-check-eligibility.svg')}" class="h-4 w-4" /> Check eligibility</button>
         </div>
       </div>
     </div>`;
@@ -951,9 +982,10 @@ function buildCreditPlanScreen() {
             </div>
           </div>
         </div>
-        <div class="bg-white border border-[#ececef] rounded-2xl p-4 flex flex-col gap-2">
-          <div class="flex items-center justify-between">
-            <p class="font-semibold text-base text-[#060606]">Direct Debit</p>
+        <div class="bg-white border border-[#ececef] rounded-2xl p-4 flex flex-col gap-3">
+          <div class="flex items-center gap-3">
+            ${directDebitLogoBox(32)}
+            <p class="flex-1 font-semibold text-base text-[#060606]">Direct Debit</p>
             <i class="fa-solid fa-circle-info text-[#4d3bd8]"></i>
           </div>
           <p class="text-sm text-[#060606]">Your account will be linked for your plan payments. You're protected by the <span class="text-[#4d3bd8] font-semibold">Direct Debit Guarantee.</span></p>
@@ -1046,6 +1078,58 @@ function buildGroupE(step) {
 }
 
 // ---------------------------------------------------------------------------
+// Group F — the bank's own "account access" consent screen, shown right
+// after the Credit application's Face ID splash (creditlogin) instead of
+// the payment flow's "Make a payment" bank page — Credit shares your bank
+// details rather than paying, so it gets its own bank-hosted screen.
+// ---------------------------------------------------------------------------
+function creditConsentAccountRow(name, sortCode, selected, b) {
+  const marker = selected
+    ? `<i class="fa-solid fa-circle-check text-2xl shrink-0" style="color:${b.color}"></i>`
+    : `<span class="w-6 h-6 rounded-full border shrink-0" style="border-color:${b.color}"></span>`;
+  return `
+    <div class="bg-white border-b border-black/10 flex items-center gap-3 px-4 py-2">
+      ${marker}
+      <div class="flex flex-col">
+        <p class="text-black text-base">${name}</p>
+        <p class="text-black/50 text-sm">${sortCode}</p>
+      </div>
+    </div>`;
+}
+
+function buildCreditConsentScreen() {
+  const b = currentBank();
+  return `
+    <div class="font-opensans absolute top-0 left-0 w-full min-h-full flex flex-col">
+      <div class="flex flex-col items-center gap-2 px-4 pt-12 text-center">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-full overflow-hidden shrink-0 bg-white">${bankIconInner(b)}</div>
+          <p class="font-bold text-lg text-black">${b.name}</p>
+        </div>
+        <p class="font-semibold text-lg text-black mt-2">Set up account access</p>
+        <p class="text-sm text-black/60">TrueLayer would like some access to your accounts. Check below, and continue or cancel.</p>
+      </div>
+      <div class="flex flex-col gap-2 mt-6">
+        <p class="text-xs text-black/60 px-4">YOUR ACCOUNTS</p>
+        <div class="flex flex-col border-t border-black/10">
+          ${creditConsentAccountRow('Personal Account', '04-00-04 – 12345678', true, b)}
+          ${creditConsentAccountRow('Personal Account', '04-00-04 – 12345679', false, b)}
+          ${creditConsentAccountRow('Joint Account', '04-00-04 – 12345670', false, b)}
+        </div>
+      </div>
+      <div class="flex items-center justify-between px-4 py-4">
+        <p class="text-black text-base">See the data you'll be sharing</p>
+        <i class="fa-solid fa-chevron-right text-black/40 text-sm"></i>
+      </div>
+      <p class="text-sm text-black/60 px-4">TrueLayer will have a one-time access to this information. After that, we'll ask you to verify yourself again.</p>
+      <div class="mt-auto sticky bottom-0 bg-white border-t border-[#d4d4d4] px-4 py-4 flex flex-col items-center gap-2">
+        <button onclick="goto('creditfinances')" class="w-full h-12 rounded-lg text-white font-bold text-lg" style="background:${b.color}">Continue</button>
+        <button onclick="creditExit()" class="font-bold text-lg" style="color:${b.color}">Cancel</button>
+      </div>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
 // Navigation / transition engine
 // ---------------------------------------------------------------------------
 function buildScreenHTML(step) {
@@ -1054,6 +1138,7 @@ function buildScreenHTML(step) {
   if (g === 'B') return buildGroupB();
   if (g === 'C') return buildGroupC(step);
   if (g === 'E') return buildGroupE(step);
+  if (g === 'F') return buildCreditConsentScreen();
   return buildGroupD();
 }
 
@@ -1111,7 +1196,7 @@ function goto(step) {
   renderTransition(prevStep);
   if (step === 'login') autoTimer = setTimeout(() => goto('bankreview'), TUNING.autoAdvance);
   if (step === 'bankauth') autoTimer = setTimeout(() => goto('success'), TUNING.autoAdvance);
-  if (step === 'creditlogin') autoTimer = setTimeout(() => goto('creditfinances'), TUNING.autoAdvance);
+  if (step === 'creditlogin') autoTimer = setTimeout(() => goto('creditconsent'), TUNING.autoAdvance);
 }
 
 // Radio state (Pay by Bank / Card / PayPal) is shared, static markup across
@@ -1326,7 +1411,9 @@ function dtBankGridButton(id) {
 }
 
 function dtSubShellTitle(step) {
-  return (step === 'bankselect' || step === 'creditbankselect') ? 'Select your bank' : 'Review';
+  // Same as mobile's subShellTitle — Credit's title stays 'Select your
+  // bank' even once a bank is picked, per the design.
+  return step === 'review' ? 'Review' : 'Select your bank';
 }
 function dtSubShellBackOnclick(step) {
   if (step === 'bankselect' || step === 'creditbankselect') return "dtGoto('pbb')";
@@ -1335,14 +1422,7 @@ function dtSubShellBackOnclick(step) {
 
 function dtSubShellBody(step) {
   if (step === 'bankselect' || step === 'creditbankselect') {
-    const creditInfo = step === 'creditbankselect' ? `
-      <div class="bg-[#f4f4f6] rounded-lg px-3 py-2 flex items-center gap-3 w-full">
-        <div class="flex-1">
-          <p class="font-semibold text-sm text-[#060606]">Share your bank account details.</p>
-          <p class="text-sm text-[#646477]">No impact on your credit score.</p>
-        </div>
-        <i class="fa-solid fa-circle-info text-[#4d3bd8]"></i>
-      </div>` : '';
+    const creditInfo = step === 'creditbankselect' ? creditShareInfoCard() : '';
     return `
       <div class="flex flex-col gap-4 w-full items-center">
         ${creditInfo}
@@ -1360,6 +1440,7 @@ function dtSubShellBody(step) {
     : `<p class="text-[11px] leading-[18px] text-[#40404c]">By continuing you are permitting TrueLayer to initiate a payment from your bank account. You also agree to its <span class="text-[#4d3bd8] font-semibold underline cursor-default">Terms of Service</span> and <span class="text-[#4d3bd8] font-semibold underline cursor-default">Privacy Policy</span>.</p>`;
   return `
     <div class="flex flex-col gap-4 w-full">
+      ${isCredit ? creditShareInfoCard() : ''}
       <div class="flex items-center gap-4 w-full">
         <div class="w-12 h-12 rounded-lg shadow-[inset_0_0_0_2px_#4d3bd8] bg-[#afadff26] flex items-center justify-center p-2 shrink-0">
           <div class="w-8 h-8 rounded-md overflow-hidden bg-white shadow-[inset_0_0_0_1px_#ececef]">${bankIconInner(b)}</div>
@@ -1375,13 +1456,16 @@ function dtSubShellBody(step) {
 // review "sub-shell" also need an explicit fill on desktop.
 function dtSubShellContent(step) {
   const isCredit = step === 'creditbankselect' || step === 'creditreview';
+  const priceRow = isCredit
+    ? `<p class="font-medium text-base text-[#060606]">Apply for Credit</p>`
+    : `<div class="flex justify-between font-medium text-base text-[#060606]"><p>Pay in Full</p><p>£1,500.00</p></div>`;
   return `
     <div class="mt-3 bg-white border border-[#d0d0d7] rounded-xl px-4 py-3 flex flex-col gap-4 w-full">
       <div class="flex items-center gap-2">
         <button id="dtSubBack" onclick="${dtSubShellBackOnclick(step)}" class="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[#f4f4f6] shrink-0"><i class="fa-solid fa-chevron-left text-[#060606]"></i></button>
         <p id="dtSubTitle" class="font-bold text-base text-[#060606] overflow-hidden">${dtSubShellTitle(step)}</p>
       </div>
-      <div class="flex justify-between font-medium text-base text-[#060606]"><p>${isCredit ? 'Apply for Credit' : 'Pay in Full'}</p><p>£1,500.00</p></div>
+      ${priceRow}
       ${separator()}
       <div id="dtSubBody" class="w-full overflow-hidden">${dtSubShellBody(step)}</div>
     </div>`;
@@ -1397,7 +1481,7 @@ function dtPbbButtonContent() {
   if (dtState.step === 'creditreview') {
     return `
     <button onclick="dtCheckEligibility()" class="mt-4 w-full h-12 rounded-xl bg-[#afadff] flex items-center justify-center gap-2 font-bold text-base text-[#060606] hover:brightness-95 transition">
-      <i class="fa-solid fa-user text-sm"></i> Check eligibility
+      <img src="${asset('icon-check-eligibility.svg')}" class="h-4 w-4" /> Check eligibility
     </button>`;
   }
   if (dtState.step !== 'review') return '';
@@ -1763,7 +1847,7 @@ function dtSetCreditChangeAnswer(id) {
 
 function buildDesktopCreditFinancesPage() {
   return `
-    <div class="w-full flex flex-col items-center">
+    <div class="w-full min-h-screen bg-[#f4f4f6] flex flex-col items-center">
       ${dtCreditHeader(3)}
       <div class="w-full max-w-[480px] px-6 py-10 flex flex-col gap-4">
         <div>
@@ -1780,9 +1864,14 @@ function buildDesktopCreditFinancesPage() {
           <p class="font-semibold text-base text-[#060606]">Do you expect any changes in the next 12 months that could make it harder to make repayments?</p>
           <div class="flex flex-col">${dtCreditYesNoOptions()}</div>
         </div>
-        <div class="flex flex-col gap-4 items-center mt-1">
+        <div class="flex flex-col gap-3 items-center mt-1">
+          <div class="flex items-center gap-2">
+            <img src="${asset('direct-debit-logo.png')}" class="h-5 w-5 object-contain shrink-0" />
+            <p class="text-xs text-[#646477]">Repayments collected by Direct Debit</p>
+          </div>
+          <p class="text-xs text-[#646477]">Secured by TrueLayer</p>
           <p class="text-sm text-[#646477] text-center">This won't affect your credit score.</p>
-          <button onclick="dtGotoStage('creditplan')" class="w-full h-12 rounded-xl bg-[#afadff] font-bold text-base text-[#060606] flex items-center justify-center gap-2 hover:brightness-95 transition"><i class="fa-solid fa-user text-sm"></i> Check eligibility</button>
+          <button onclick="dtGotoStage('creditplan')" class="w-full h-12 rounded-xl bg-[#afadff] font-bold text-base text-[#060606] flex items-center justify-center gap-2 hover:brightness-95 transition"><img src="${asset('icon-check-eligibility.svg')}" class="h-4 w-4" /> Check eligibility</button>
         </div>
       </div>
     </div>`;
@@ -1824,7 +1913,7 @@ function dtSelectCreditPlan(id) {
 function buildDesktopCreditPlanPage() {
   const b = dtBank();
   return `
-    <div class="w-full flex flex-col items-center">
+    <div class="w-full min-h-screen bg-[#f4f4f6] flex flex-col items-center">
       ${dtCreditHeader(4, "dtGotoStage('creditfinances')")}
       <div class="w-full max-w-[480px] px-6 py-10 flex flex-col gap-4">
         <div>
@@ -1849,9 +1938,10 @@ function buildDesktopCreditPlanPage() {
             </div>
           </div>
         </div>
-        <div class="bg-white border border-[#ececef] rounded-2xl p-4 flex flex-col gap-2">
-          <div class="flex items-center justify-between">
-            <p class="font-semibold text-base text-[#060606]">Direct Debit</p>
+        <div class="bg-white border border-[#ececef] rounded-2xl p-4 flex flex-col gap-3">
+          <div class="flex items-center gap-3">
+            ${directDebitLogoBox(32)}
+            <p class="flex-1 font-semibold text-base text-[#060606]">Direct Debit</p>
             <i class="fa-solid fa-circle-info text-[#4d3bd8]"></i>
           </div>
           <p class="text-sm text-[#060606]">Your account will be linked for your plan payments. You're protected by the <span class="text-[#4d3bd8] font-semibold">Direct Debit Guarantee.</span></p>
@@ -1868,7 +1958,7 @@ function buildDesktopCreditPlanPage() {
 
 function buildDesktopCreditAgreementPage() {
   return `
-    <div class="w-full flex flex-col items-center">
+    <div class="w-full min-h-screen bg-[#f4f4f6] flex flex-col items-center">
       ${dtCreditHeader(5, "dtGotoStage('creditplan')")}
       <div class="w-full max-w-[480px] px-6 py-10 flex flex-col gap-4">
         <div>
@@ -2235,7 +2325,7 @@ async function previewTuning() {
   const params = new URLSearchParams(location.search);
   const q = params.get('step');
   const validSteps = ['method', 'pbb', 'bankselect', 'review', 'login', 'bankreview', 'bankauth', 'success',
-    'creditbankselect', 'creditreview', 'creditlogin', 'creditfinances', 'creditplan', 'creditagreement'];
+    'creditbankselect', 'creditreview', 'creditlogin', 'creditconsent', 'creditfinances', 'creditplan', 'creditagreement'];
   if (q && validSteps.includes(q)) state.step = q;
 
   // The animation tuner is a dev/demo-building tool, not part of the demo
